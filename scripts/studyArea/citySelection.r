@@ -14,7 +14,7 @@ USAtop <- subset(USACity, POPULATION > 400000) ## USA
 canadalist <- c("Toronto","Montréal","Vancouver","Calgary","Ottawa - Gatineau","Edmonton",
                 "Winnipeg","Québec","Halifax", "Hamilton")
 CanadaTop <- subset(canadaCity, PCNAME %in% canadalist)
-CanadaTop <- unionSpatialPolygons(CanadaTop, CanadaTop$PCNAME) ## drop duplicate of Ottawa
+CanadaTop <- maptools::unionSpatialPolygons(CanadaTop, CanadaTop$PCNAME) ## drop duplicate of Ottawa
 
 
 ## City names combined
@@ -26,7 +26,7 @@ AllCities <- data.frame( CityName = c(USAtop$NAME, names(CanadaTop)),
 
 ## Download all the population variables for cities
 AllCities[,2:3]  <- round(AllCities[,2:3] ,2 ) ## need less specific coordinates to work
-
+write.csv(AllCities, "data//CityList.csv", row.names=FALSE)
 
 lapply(1:nrow(AllCities), function(i){
 URL <- paste0("https://www.numbeo.com/api/city_pollution?api_key=gvwemy27fipv0e&query=",AllCities[i,3],",",AllCities[i,2])
