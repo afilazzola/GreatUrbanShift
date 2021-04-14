@@ -16,7 +16,7 @@ bioclim <- list.files("~//scratch//futureClimate//", full.names = T, pattern=".t
 ## specify range of conditions to extract
 selectedModels <- expand.grid(timeframe=timeframe, SSP=SSP, stringsAsFactors = F)
 
-lapply(1:8, function(i){
+lapply(1:6, function(i){
   modelIter <- paste0("(",selectedModels[i,"timeframe"],")(?:.+)(",selectedModels[i,"SSP"],")")
   
   ## Select all filepaths to 8 GCMs  
