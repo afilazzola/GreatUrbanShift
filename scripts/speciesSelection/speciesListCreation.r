@@ -36,7 +36,7 @@ registerDoParallel(cl)
 
 
 ## Find most frequently observed species
-foreach(i = 1:nrow(cities), .combine=c,  .packages=c("tidyverse","raster","rgdal","rgbif"), 
+foreach(i = 17:nrow(cities), .combine=c,  .packages=c("tidyverse","raster","rgdal","rgbif"), 
         .errorhandling = "remove") %dopar% {
           siteSpecies <- occ_search( hasCoordinate=T,  
                                     start=1, 
@@ -47,12 +47,12 @@ foreach(i = 1:nrow(cities), .combine=c,  .packages=c("tidyverse","raster","rgdal
                                     hasGeospatialIssue=FALSE) ## specify for area around GTA - WKT polygon counter clockwise
           
           
-          siteDF <- siteSpecies$data %>% group_by(species) %>% 
+          siteDF <- siteSpecies$data %>% group_by(kingdom, phylum, class, species) %>% 
             mutate(obsLocation = paste0(decimalLongitude, "-",decimalLatitude)) %>% 
             summarize(nobs = length(unique(obsLocation)))
           topSpecies <- siteDF %>% filter(nobs>10) %>%  filter(!is.na(species)) %>%  data.frame()
           topSpecies[,"city"] <- cities[i,1]
           
-          write.csv(topSpecies, paste0("data//SiteLists//",cities[i,"Location"], "SpeciesLists.csv"), row.names=FALSE)
+          write.csv(topSpecies, paste0("data//SiteLists//",cities[i,"CityName"], "SpeciesLists.csv"), row.names=FALSE)
         }
           

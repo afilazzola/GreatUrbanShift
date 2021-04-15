@@ -18,13 +18,13 @@ library(rJava)
 options(java.parameters = "- Xmx1024m")
 
 ## Set WD
-setwd("D:/RStudio/UrbanClimateSensitivity/troubleshoot")
+setwd("~/projects/def-sapna/afila/GreatUrbanShift")
 
 ##  Load functions functions
 sampleAround <- function(point, nsamples){
-cityBuffer <- circles(point, d=25000, lonlat=F, dissolve=F) ## 25 km radius (50 km buffer)
+cityBuffer <- circles(point, d=10000, lonlat=T, dissolve=F) ## 10 km radius (20 km buffer)
 cityBuffer <- cityBuffer@polygons
-crs(cityBuffer) <- CRS("+proj=lcc +lat_1=49 +lat_2=77 +lat_0=0 +lon_0=-95 +datum=WGS84")
+crs(cityBuffer) <- CRS("+proj=longlat +datum=WGS84 +no_defs")
 samplePoints <- spsample(cityBuffer, nsamples, sp=T, type="stratified")
 return(samplePoints)
 }
@@ -32,30 +32,28 @@ return(samplePoints)
 ## Load Climate
 climateFiles <- list.files("data//climate//", full.names = T)
 climateRasters <- stack(climateFiles) ## Drop MAR with missing values
-crs(climateRasters) <- CRS("+proj=lcc +lat_1=49 +lat_2=77 +lat_0=0 +lon_0=-95 +datum=WGS84")
+names(climateRasters) <- paste0("bio",1:19)
 
 ## Load NA polygon
-NApoly <- readOGR("data//EasternNA.shp")
-NApoly <- spTransform(NApoly, CRS("+proj=lcc +lat_1=49 +lat_2=77 +lat_0=0 +lon_0=-95 +datum=WGS84"))
+NApoly <- readOGR("data//CanUSA.shp")
 
 ## Load species
 speciesFiles <- list.files("data//speciesOcc", full.names = T)
 # speciesFiles <- list.files("data//gbifOcc", full.names = T)
 
 ## List future climates
-allFutureClimate <- list.files("data//FutureClimate//", recursive = T, full.names = T)
-GCMs <- c("GFDL","MPI","ENSEMBLE")
-RCPs <- c("rcp45","rcp85")
-window <- c("2055","2085")
-allCombinations <- expand.grid(GCM=GCMs, RCP=RCPs, Year=window, stringsAsFactors = F)
+allFutureClimate <- list.files("data//futureClimate//", recursive = T, full.names = T)
+RCPs <- c("ssp126","ssp370","ssp585")
+window <- c("2041-2060","2081-2100")
+allCombinations <- expand.grid(RCP=RCPs, Year=window, stringsAsFactors = F)
 
 ## Load cities to examine and add buffer
-cities <- read.csv("data//StudySites.csv")
+cities <- read.csv("data//CityList.csv")
 coordinates(cities) <- ~lon + lat
 proj4string(cities) <- CRS("+proj=longlat +datum=WGS84")
-cities <- spTransform(cities, CRS("+proj=lcc +lat_1=49 +lat_2=77 +lat_0=0 +lon_0=-95 +datum=WGS84"))
+
 ## Sample points around city in buffer
-allPoints <- lapply(1:10, function(i)  {
+allPoints <- lapply(1:nrow(cities), function(i)  {
   createdPoints <- sampleAround(cities[i,], 100)
   createdPoints <- SpatialPointsDataFrame(createdPoints, data=data.frame(City = rep(cities@data[i,1], length(createdPoints))))
 }
@@ -94,7 +92,7 @@ speciesOcc <- thin(spLoad, lat.col="decimalLatitude", long.col = "decimalLongitu
 ## Transform occurrences to spdataframe
 coordinates(speciesOcc) <- ~Longitude + Latitude
 proj4string(speciesOcc) <- CRS("+proj=longlat +datum=WGS84")
-sp1 <- spTransform(speciesOcc,  CRS("+proj=lcc +lat_1=49 +lat_2=77 +lat_0=0 +lon_0=-95 +datum=WGS84"))
+sp1 <- speciesOcc
 
 ## list species name
 speciesName <- basename(speciesFiles[i]) %>% gsub(".csv", "", .) %>% gsub(" ", "_", .)
@@ -120,34 +118,23 @@ occtest.a <- backgr[fold.a == 4, ]
 occtrain.a <- backgr[fold.a != 4, ]
 
 
-###### Variable selection
+###### Reduce co-linearity between models
 
 ## Extract climate data
 pres <- extract(climateRasters, occtrain.p)
 abs <- extract(climateRasters, occtrain.a)
 allClim <- rbind(pres, abs) %>% data.frame()
 allClim[,"occurrence"] <- c(rep(1, nrow(pres)),rep(0, nrow(abs)))
-allClim <- allClim %>% filter(!is.na(allClim$AHM)) ## drop NAs
 
 ## Check for covariance
 colin <- usdm::vifcor(allClim[,-ncol(allClim)])
-dropVars <- paste0(colin@excluded, collapse = "|")
-selectVars <-  allClim[grep(dropVars, names(allClim), invert = T, value=T)]
+selectVars <-  colin@results$Variables
 
-## Best subsets of variables
-m1 <- glm(occurrence ~ . , data=selectVars, na.action="na.fail", family="binomial")
-dredgeOut <- MuMIn::dredge(m1, rank="AICc")
-
-
-## select top model
-bestModel <- get.models(dredgeOut ,1 )
-bestVars <- names(bestModel[[1]]$coefficients)
-bestVars <- bestVars[-1] ## drop intercept
 
 ###### Conduct species distribution modelling
 
 ## Use best variables
-bestClim <- climateRasters[[bestVars]]
+bestClim <- climateRasters[[selectVars]]
 
 
 ## Select bias weighting for random forest

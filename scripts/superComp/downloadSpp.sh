@@ -9,11 +9,12 @@
 #SBATCH --mail-type=FAIL
 
 
-module load grass
+
 module load netcdf
 module load udunits
 module load r
 module load StdEnv/2020  gcc/9.3.0 r-bundle-bioconductor/3.12
+module load grass
 
 
 Rscript ~/projects/def-sapna/afila/GreatUrbanShift/scripts/speciesListCreation.r
