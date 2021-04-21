@@ -55,4 +55,24 @@ foreach(i = 17:nrow(cities), .combine=c,  .packages=c("tidyverse","raster","rgda
           
           write.csv(topSpecies, paste0("data//SiteLists//",cities[i,"CityName"], "SpeciesLists.csv"), row.names=FALSE)
         }
+
+
+### Generate species list
+
+cityList <- list.files("data//cityData//speciesLists//", full.names=T)
+
+allcities <- lapply(1:length(cityList), function(i){
+  read.csv(cityList[i])
+})
           
+allcities <- do.call(rbind, allcities)
+
+## drop duplicates
+allcities <- allcities[!duplicated(allcities$species),]
+
+allAnimals <- allcities %>% 
+          filter(kingdom == "Animalia") %>% ## drop plants, fungi, and bacteria
+         filter(!species %in% c("Apis mellifera","Felis catus","Sus scrofa","Gallus gallus")) ## drop domesticated animals
+                   
+write.csv(allAnimals, "data//cityData//masterSpeciesList.csv", row.names=FALSE)          
+                   

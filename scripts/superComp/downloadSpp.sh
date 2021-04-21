@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --account=def-sapna
 #SBATCH --ntasks=9
-#SBATCH --time=6:00:00
+#SBATCH --time=12:00:00
 #SBATCH --mem-per-cpu=2G
 #SBATCH --mail-user=alex.filazzola@outlook.com
 #SBATCH --mail-type=BEGIN
@@ -17,4 +17,4 @@ module load StdEnv/2020  gcc/9.3.0 r-bundle-bioconductor/3.12
 module load grass
 
 
-Rscript ~/projects/def-sapna/afila/GreatUrbanShift/scripts/speciesListCreation.r
+Rscript ~/projects/def-sapna/afila/GreatUrbanShift/scripts/downloadSpeciesRecords.r

@@ -1,0 +1,60 @@
+## Download records for all species
+
+## Libraries
+library(tidyverse)
+library(raster)
+library(rgdal)
+library(doParallel)
+library(rgbif)
+
+## Set wd
+setwd("~/projects/def-sapna/afila/GreatUrbanShift")
+
+## Load in master species list
+masterList <- read.csv("data//cityData//masterSpeciesList.csv")
+
+### bounding box polygon for North America
+NApolyBB <- "POLYGON((-160 0,-160 65,-50 65,-50 0,-160 0))"
+
+
+## Load function to download species
+getGBIFcsv <- function(species){
+  
+  taxonKeys <- species %>% 
+    taxize::get_gbifid_(method="backbone")  %>% 
+    imap(~ .x %>% mutate(original_sciname = .y)) %>% 
+    bind_rows() %>% # combine all data.frames into one
+    filter(matchtype == "EXACT" & status == "ACCEPTED") %>% 
+    pull(usagekey) # get the gbif taxonkeys
+  
+  
+  
+  sampleSpp <- occ_search(taxonKey = taxonKeys,  hasCoordinate=T,   ## select plants, in Canada, with coordinates
+                          fields = c("scientificName","acceptedScientificName","decimalLatitude","decimalLongitude","eventDate","verbatimEventDate","year","month","day","coordinateUncertaintyInMeters","genus","species","kingdom","datasetKey"),
+                          year= c("2000,2020"), limit=100000,  ## Extract recent observations only
+                          geometry=NApolyBB,
+                          hasGeospatialIssue=FALSE) ## specify for area around GTA - WKT polygon counter clockwise
+  return(sampleSpp)
+}
+
+
+
+## specify number of cores available
+cl <- makeCluster(8, type="FORK")
+clusterEvalQ(cl, { library(MASS); RNGkind("L'Ecuyer-CMRG") })
+clusterExport(cl, varlist=list("masterList", "getGBIFcsv","NApolyBB"),
+              envir = environment())
+registerDoParallel(cl)
+
+
+
+geographyPatterns <- foreach(j = 1:nrow(masterList), .combine=c,  .packages=c("tidyverse","raster","rgdal","rgbif"), 
+                             .errorhandling = "remove") %dopar% {
+                               
+                               ### Download species list
+                               sampleSpp <- getGBIFcsv(masterList[j,"species"])
+                               sampleSpp <- data.frame(sampleSpp$data)
+                               speciesName <- gsub(" ", "_", masterList[j,"species"])
+                               write.csv(sampleSpp, paste0("data//speciesOcc//",speciesName,".csv"), row.names=FALSE)
+                               print(j)
+                             }
