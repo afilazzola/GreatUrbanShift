@@ -27,13 +27,16 @@ samplePoints <- spsample(cityBuffer, nsamples, sp=T, type="stratified")
 return(samplePoints)
 }
 
+## Load NA polygon
+NApoly <- readOGR("data//CanUSA.shp")
+
 ## Load Climate
 climateFiles <- list.files("data//climate//", full.names = T)
 climateRasters <- stack(climateFiles) ## Drop MAR with missing values
 names(climateRasters) <- paste0("bio",1:19)
+climateRasters <- climateRasters[[c("bio1","bio3","bio4","bio5","bio6","bio12","bio13","bio14","bio15")]]
+climateRasters <- climateRasters %>% crop(., NApoly) %>% mask(., NApoly) ## load sampling grid
 
-## Load NA polygon
-NApoly <- readOGR("data//CanUSA.shp")
 
 ## Load species
 speciesFiles <- list.files("data//speciesOcc", full.names = T)
@@ -60,21 +63,20 @@ cityPoints <- do.call(rbind, allPoints)
 
 ### Bias corrections
 bias <- raster("data//biasFile.tif") ## Load bias file
-gridThinning <- climateRasters[[1]] %>% crop(., NApoly) %>% mask(., NApoly) ## load sampling grid
 gridThinning[!is.na(gridThinning)] <- 0
 
 ## Set up cluster
 ## specify number of cores available
-cl <- makeCluster(30, type="FORK")
+cl <- makeCluster(4, type="FORK")
 clusterEvalQ(cl, { library(MASS); RNGkind("L'Ecuyer-CMRG") })
-clusterExport(cl, varlist=list("cityPoints","allCombinations","allFutureClimate","speciesFiles","NApoly","climateRasters"),
+clusterExport(cl, varlist=list("cityPoints","allCombinations","allFutureClimate","speciesFiles","NApoly","climateRasters","gridThinning"),
               envir = environment())
 registerDoParallel(cl)
 
 ### Need multiple runs to improve Efficacy (n = 10)
 ## https://besjournals.onlinelibrary.wiley.com/doi/full/10.1111/j.2041-210X.2011.00172.x
 
-iterN <- foreach(i = 1:length(speciesFiles),  .combine=c,  .packages=c("tidyverse","raster","randomForest","dismo","usdm","MuMIn","doParallel","foreach","adehabitatHR","ncdf4","rgdal","rgeos"), .errorhandling = "remove") %dopar% {
+iterN <- foreach(i = 1:length(speciesFiles),  .combine=c,  .packages=c("rJava","tidyverse","raster","dismo","usdm","MuMIn","doParallel","foreach","adehabitatHR","ncdf4","rgdal","rgeos"), .errorhandling = "remove") %dopar% {
 
   
 ##### Spatial points processing  
@@ -97,12 +99,15 @@ speciesName <- basename(speciesFiles[i]) %>% gsub(".csv", "", .) %>% gsub(" ", "
 samplearea <- mcp(sp1, percent=95)
 crs(samplearea) <- crs(sp1)
 
+## determine the number of background points
+nbackgr <- ifelse(nrow(data.frame(speciesOcc))*10 > 9999, nrow(data.frame(speciesOcc)) ,10000) ## 10k unless occurrences are more than 10k
+ 
 ## generate background points based on biased observations
 ## https://github.com/jamiemkass/ENMeval/issues/26
 biasCut <- mask(bias, samplearea) ## mask bias area to species extent
 biasValues <- values(biasCut)
 biasValues[is.na(biasValues)] <- 0
-backgr <- xyFromCell(biasCut, sample(ncell(biasCut), nrow(data.frame(speciesOcc))*10, prob=biasValues))
+backgr <- xyFromCell(biasCut, sample(ncell(biasCut), nbackgr, prob=biasValues))
 
 
 ## withhold 20% for sample testing
@@ -138,23 +143,16 @@ bestClim <- climateRasters[[selectVars]]
 max1 <- ENMeval::ENMevaluate(data.frame(occtrain.p), bestClim, bg.coords = data.frame(occtrain.a),
                     fc = c("L", "Q", "P", "LQ", "H", "HQ", "T", "QPH", "QPHT", "LQHP"), RMvalues=seq(0.5, 2, 0.5),
                     method="randomkfold", kfolds=10, 
-                    parallel=TRUE, numCores = 6,
                     algorithm='maxent.jar')
 
 ## best model
 bestMax <- which(max1@results$AICc==min(max1@results$AICc))[1]
 modelOut <- max1@results[bestMax,]
-predOut <-  raster::predict(bestClim, max1@models[[bestMax]], progress="text", type="logistic")
+predOut <-  raster::predict(bestClim, max1@models[[bestMax]],  type="logistic")
 
 ## evaluate
-erf <- evaluate(occtest.p, occtest.a, max1@models[[1]], bestClim)
+erf <- evaluate(occtest.p, occtest.a, max1@models[[bestMax]], bestClim)
 
-
-## predict area
-EasternClim <- crop(bestClim, NApoly)
-sppmap <- raster::predict(EasternClim, max1)
-sppmap2 <- raster::predict(EasternClim, rf2)
-sppmap <- mask(sppmap, samplearea) ## trim by surveyed area
 
 ## Extract current city climate
 CurrentcityClimate <- extract(bestClim, cityPoints, df=T)
@@ -163,60 +161,60 @@ CurrentcityClimate <- CurrentcityClimate[!is.na(CurrentcityClimate[,2]),] ## dro
 
 
 ## predict species
-CurrentcityClimate[,"speciesOcc"] <- predict(rf1, CurrentcityClimate)
-citySummary <- CurrentcityClimate %>% group_by(City) %>% summarize(meanProb = mean(speciesOcc, na.rm=T),
-                                                                            sdProb = sd(speciesOcc, na.rm=T)) %>% data.frame()
+CurrentcityClimate[,"speciesOcc"] <- predict(max1@models[[bestMax]], CurrentcityClimate)
+citySummary <- CurrentcityClimate %>% group_by(City) %>% dplyr::select(-ID) %>%  ## drop ID column and average by city
+  summarize(meanProb = mean(speciesOcc, na.rm=T), sdProb = sd(speciesOcc, na.rm=T)) %>% data.frame()
+
 citySummary[,"GCM"] <- "currentClimate"
 citySummary[,"RCP"] <- "currentClimate"
 citySummary[,"Year"] <- "currentClimate"
 citySummary[,"species"] <- speciesName %>% gsub("_", " ", .)
 
-write.csv(citySummary, paste0("out//modelOut//CurrentClimate",speciesName,".csv"), row.names=FALSE)
+write.csv(citySummary, paste0("out//cityPredict//CurrentClimate",speciesName,".csv"), row.names=FALSE)
 
 ## create output dataframe
-outdata <- data.frame(varcontribute)
-outdata[,"AUC"] <- erf@auc ## AUC value
-outdata[,"np"] <- erf@np ## number of presence points used for evaluation
-outdata[,"na"] <- erf@na ## number of absence points used for evaluation
-outdata[,"cor"] <- erf@cor ## correlation between test data and model
-outdata[,"TPR"] <- mean(erf@TPR) ## True positive rate
-outdata[,"TNR"] <- mean(erf@TNR) ## True negative rate
-outdata[,"R2avg"] <- mean(rf1$rsq) ## average r2
-outdata[,"SelectedVars"] <- paste(names(preds), collapse='; ')
-outdata[,"species"] <- speciesName %>% gsub("_", " ", .)
+modelData <- data.frame(species =  speciesName %>% gsub("_", " ", .))
+modelData[,"AUC"] <- erf@auc ## AUC value
+modelData[,"np"] <- erf@np ## number of presence points used for evaluation
+modelData[,"na"] <- erf@na ## number of absence points used for evaluation
+modelData[,"cor"] <- erf@cor ## correlation between test data and model
+modelData[,"TPR"] <- mean(erf@TPR) ## True positive rate
+modelData[,"TNR"] <- mean(erf@TNR) ## True negative rate
+modelData[,"SelectedVars"] <- paste(names(bestClim), collapse='; ')
+
 
 ## save files
-write.csv(outdata, paste0("out//modelOut//Model",speciesName,".csv"), row.names=FALSE)
+write.csv(modelData, paste0("out//models//Model",speciesName,".csv"), row.names=FALSE)
 
 ## write raster
-writeRaster(sppmap,  paste0("out//speciesDistro//",speciesName,".tif"), overwrite=T)
+writeRaster(predOut,  paste0("out//speciesDistro//",speciesName,".tif"), overwrite=T)
 
 ## predict future climate
-selectedVariables <- names(preds)
+selectedVariables <- names(bestClim)
 
-lapply(c(1,7), function(j)  {
+lapply(c(1,6), function(j)  {
 
       ## Load climate raster 
-      rasterPaths <- paste0("(?=.*",allCombinations[j,1],")(?=.*",allCombinations[j,2],")(?=.*",allCombinations[j,3],")")
+      rasterPaths <- paste0("(?=.*",allCombinations[j,1],")(?=.*",allCombinations[j,2],")(?=.*)")
       futureClimate <- allFutureClimate[grep(rasterPaths, allFutureClimate, perl=T)]
-      formatSelectVars <- paste0(selectedVariables, collapse="|") ## convert selected vars to regex
-      futureRaster <- stack(futureClimate[grep(formatSelectVars, futureClimate)])
-      crs(futureRaster) <- crs(cityPoints)
+      futureRaster <- stack(futureClimate) ## load raster
+      names(futureRaster) <- paste0("bio",1:19) ## rename variables
+      futureRaster <- futureRaster[[c(selectedVariables)]] ##select same variables as before
+      futureRaster <- futureRaster %>% crop(., NApoly) %>% mask(., NApoly) ## crop to study area
       
       ## Extract city climate
       cityClimate <- extract(futureRaster, cityPoints, df=T)
       cityClimate <- cbind(cityClimate, City = as.character(cityPoints@data[,1])) ## join city name
       cityClimate <- cityClimate[!is.na(cityClimate[,2]),] ## drop missing values
-      cityClimate[,"GCM"] <- allCombinations[j,1] 
-      cityClimate[,"RCP"] <- allCombinations[j,2]
-      cityClimate[,"Year"] <- allCombinations[j,3]
+      cityClimate[,"SSP"] <- allCombinations[j,1]
+      cityClimate[,"Year"] <- allCombinations[j,2]
       
       ## predict species
-      cityClimate[,"speciesOcc"] <- predict(rf1, cityClimate)
-      citySummary <- cityClimate %>% group_by(City, GCM, RCP, Year) %>% summarize(meanProb = mean(speciesOcc, na.rm=T),
+      cityClimate[,"speciesOcc"] <- predict(max1@models[[bestMax]], cityClimate)
+      citySummary <- cityClimate %>% group_by(City, SSP, Year) %>% summarize(meanProb = mean(speciesOcc, na.rm=T),
                                                                                   sdProb = sd(speciesOcc, na.rm=T)) %>% data.frame()
       citySummary[,"species"] <- speciesName %>% gsub("_", " ", .)
-      write.csv(citySummary, paste0("out//modelOut//FutureClimate",speciesName,".csv"), row.names=FALSE)
+      write.csv(citySummary, paste0("out//models//FutureClimate",speciesName,".csv"), row.names=FALSE)
       
         })
 print(i)

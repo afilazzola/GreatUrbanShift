@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --account=def-sapna
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=30
-#SBATCH --time=48:00:00
-#SBATCH --mem=0
+#SBATCH --ntasks=5
+#SBATCH --time=02:59:00
+#SBATCH --mem-per-cpu=10
 #SBATCH --mail-user=alex.filazzola@outlook.com
 #SBATCH --mail-type=BEGIN
 #SBATCH --mail-type=END
