@@ -5,7 +5,6 @@ library(tidyverse)
 library(raster)
 library(ncdf4)
 library(rgdal)
-library(randomForest)
 library(dismo)
 library(rgeos)
 library(foreach)
@@ -13,7 +12,6 @@ require(usdm)
 require(MuMIn)
 require(adehabitatHR)
 library(doParallel)
-library(spThin)
 library(rJava)
 options(java.parameters = "- Xmx1024m")
 
@@ -39,7 +37,7 @@ NApoly <- readOGR("data//CanUSA.shp")
 
 ## Load species
 speciesFiles <- list.files("data//speciesOcc", full.names = T)
-# speciesFiles <- list.files("data//gbifOcc", full.names = T)
+
 
 ## List future climates
 allFutureClimate <- list.files("data//futureClimate//", recursive = T, full.names = T)
@@ -60,8 +58,10 @@ allPoints <- lapply(1:nrow(cities), function(i)  {
 )
 cityPoints <- do.call(rbind, allPoints)
 
-## Load bias file
-bias <- raster("data//biasFile.tif")
+### Bias corrections
+bias <- raster("data//biasFile.tif") ## Load bias file
+gridThinning <- climateRasters[[1]] %>% crop(., NApoly) %>% mask(., NApoly) ## load sampling grid
+gridThinning[!is.na(gridThinning)] <- 0
 
 ## Set up cluster
 ## specify number of cores available
@@ -74,25 +74,21 @@ registerDoParallel(cl)
 ### Need multiple runs to improve Efficacy (n = 10)
 ## https://besjournals.onlinelibrary.wiley.com/doi/full/10.1111/j.2041-210X.2011.00172.x
 
-iterN <- foreach(i = 1:length(speciesFiles),  .combine=c,  .packages=c("tidyverse","raster","randomForest","dismo","usdm","MuMIn","doParallel","foreach","spThin","adehabitatHR","ncdf4","rgdal","rgeos"), .errorhandling = "remove") %dopar% {
+iterN <- foreach(i = 1:length(speciesFiles),  .combine=c,  .packages=c("tidyverse","raster","randomForest","dismo","usdm","MuMIn","doParallel","foreach","adehabitatHR","ncdf4","rgdal","rgeos"), .errorhandling = "remove") %dopar% {
 
   
 ##### Spatial points processing  
           
 ## Load occurrences
 spLoad <- read.csv(speciesFiles[i])
+coordinates(spLoad) <- ~decimalLongitude + decimalLatitude ## Transform occurrences to spdataframe
+proj4string(spLoad) <- CRS("+proj=longlat +datum=WGS84")
 
-## Thin occurrences using spthin
-## https://onlinelibrary.wiley.com/doi/10.1111/ecog.01132 spThin package
+## Thin occurrences using observations per grid cell
 ## systematic sampling as the most effect form of bias correct https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0097122
-speciesOcc <- thin(spLoad, lat.col="decimalLatitude", long.col = "decimalLongitude", spec.col="species",
-                   thin.par = 10, reps=1, write.files=FALSE, locs.thinned.list.return=T) %>% data.frame() 
-
-
-## Transform occurrences to spdataframe
-coordinates(speciesOcc) <- ~Longitude + Latitude
-proj4string(speciesOcc) <- CRS("+proj=longlat +datum=WGS84")
-sp1 <- speciesOcc
+sp1 <- gridSample(spLoad, gridThinning, n=1)  %>% data.frame()
+coordinates(sp1) <- ~decimalLongitude + decimalLatitude ## Transform occurrences to spdataframe
+proj4string(sp1) <- CRS("+proj=longlat +datum=WGS84")
 
 ## list species name
 speciesName <- basename(speciesFiles[i]) %>% gsub(".csv", "", .) %>% gsub(" ", "_", .)

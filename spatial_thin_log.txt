@@ -1,0 +1,24 @@
+********************************************** 
+ Beginning Spatial Thinning.
+ Script Started at: Mon Apr 26 09:47:00 2021
+
+Thinning Parameter Used (in km): 10
+Number of replicates of thinning script: 1
+********************************************** 
+ Beginning Spatial Thinning.
+ Script Started at: Mon Apr 26 09:49:06 2021
+
+Thinning Parameter Used (in km): 10
+Number of replicates of thinning script: 1
+********************************************** 
+ Beginning Spatial Thinning.
+ Script Started at: Mon Apr 26 10:30:51 2021
+
+Thinning Parameter Used (in km): 100
+Number of replicates of thinning script: 1
+********************************************** 
+ Beginning Spatial Thinning.
+ Script Started at: Mon Apr 26 10:31:15 2021
+
+Thinning Parameter Used (in km): 10
+Number of replicates of thinning script: 1

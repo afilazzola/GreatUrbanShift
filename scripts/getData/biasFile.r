@@ -12,14 +12,12 @@ allSpecies <- do.call( rbind, SpeciesList) ## combine all into one CSV
 ## Convert species to CRS of Climate NA
 coordinates(allSpecies) <- ~decimalLongitude+decimalLatitude
 crs(allSpecies) <- CRS("+proj=longlat +datum=WGS84")
-allSpecies <- spTransform(allSpecies, CRS("+proj=lcc +lat_1=49 +lat_2=77 +lat_0=0 +lon_0=-95 +datum=WGS84")) 
 allSpecies <- data.frame(allSpecies) ## convert back to dataframe
 
 ### Load climate raster
 climateFiles <- list.files("data//climate//", full.names = T)
 climateRasters <- raster(climateFiles[1])
-crs(climateRasters) <- CRS("+proj=lcc +lat_1=49 +lat_2=77 +lat_0=0 +lon_0=-95 +datum=WGS84")
-
+crs(climateRasters) <-  CRS("+proj=longlat +datum=WGS84")
 
 ## Conduct point density estimates
 xband <- MASS::bandwidth.nrd(allSpecies$decimalLongitude) ## Find bandwidths for x of raster

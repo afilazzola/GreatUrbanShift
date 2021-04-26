@@ -16,6 +16,10 @@ masterList <- read.csv("data//cityData//masterSpeciesList.csv")
 ### bounding box polygon for North America
 NApolyBB <- "POLYGON((-160 0,-160 65,-50 65,-50 0,-160 0))"
 
+## Load species that have already been downloaded
+currentDL <- list.files("data//speciesOcc//")
+currentDL <- currentDL %>% gsub("_", " ", . ) %>% gsub(".csv", "", . ) 
+masterList <- masterList %>% filter(!species %in% currentDL)
 
 ## Load function to download species
 getGBIFcsv <- function(species){
@@ -37,19 +41,17 @@ getGBIFcsv <- function(species){
   return(sampleSpp)
 }
 
-
-
+ 
 ## specify number of cores available
-cl <- makeCluster(8, type="FORK")
+cl <- makeCluster(3, type="PSOCK", outfile="")
 clusterEvalQ(cl, { library(MASS); RNGkind("L'Ecuyer-CMRG") })
 clusterExport(cl, varlist=list("masterList", "getGBIFcsv","NApolyBB"),
-              envir = environment())
+               envir = environment())
 registerDoParallel(cl)
 
 
 
-geographyPatterns <- foreach(j = 1:nrow(masterList), .combine=c,  .packages=c("tidyverse","raster","rgdal","rgbif"), 
-                             .errorhandling = "remove") %dopar% {
+geographyPatterns <- foreach(j = 1:nrow(masterList), .combine=c,  .packages=c("tidyverse","raster","rgdal","rgbif","taxize"), .errorhandling = "remove") %dopar% {
                                
                                ### Download species list
                                sampleSpp <- getGBIFcsv(masterList[j,"species"])
