@@ -8,8 +8,6 @@ library(rgdal)
 library(dismo)
 library(rgeos)
 library(foreach)
-require(usdm)
-require(MuMIn)
 require(adehabitatHR)
 library(doParallel)
 library(rJava)
@@ -40,7 +38,14 @@ climateRasters <- climateRasters %>% crop(., NApoly) %>% mask(., NApoly) ## load
 
 ## Load species
 speciesFiles <- list.files("data//speciesOcc", full.names = T)
-
+## Drop species that have already been processed
+currentProcessed <- list.files("out//speciesDistro//")
+if(length(currentProcessed) > 0){  ## if downloaded species exist, skip those species
+currentProcessed <- currentProcessed %>% gsub(".tif", "", . ) %>% paste0(., collapse="|") ## create a list of species already processed
+speciesFiles <- grep(currentProcessed,speciesFiles, value=T, invert=T) ## drop those species
+} else { ## if no species exist, just use the regular species list
+speciesFiles <- speciesFiles 
+}
 
 ## List future climates
 allFutureClimate <- list.files("data//futureClimate//", recursive = T, full.names = T)
@@ -68,7 +73,7 @@ gridThinning[!is.na(gridThinning)] <- 0
 
 ## Set up cluster
 ## specify number of cores available
-cl <- makeCluster(20, type="FORK")
+cl <- makeCluster(16, type="FORK")
 clusterEvalQ(cl, { library(MASS); RNGkind("L'Ecuyer-CMRG") })
 clusterExport(cl, varlist=list("cityPoints","allCombinations","allFutureClimate","speciesFiles","NApoly","climateRasters","gridThinning"),
               envir = environment())
@@ -77,7 +82,7 @@ registerDoParallel(cl)
 ### Need multiple runs to improve Efficacy (n = 10)
 ## https://besjournals.onlinelibrary.wiley.com/doi/full/10.1111/j.2041-210X.2011.00172.x
 
-iterN <- foreach(i = 1:length(speciesFiles),  .combine=c,  .packages=c("rJava","tidyverse","raster","dismo","usdm","MuMIn","doParallel","foreach","adehabitatHR","ncdf4","rgdal","rgeos")) %dopar% {
+iterN <- foreach(i = 1:length(speciesFiles),  .combine=c,  .packages=c("rJava","tidyverse","raster","dismo","doParallel","foreach","adehabitatHR","ncdf4","rgdal","rgeos")) %dopar% {
 
   
 ##### Spatial points processing  
@@ -126,7 +131,7 @@ occtrain.a <- backgr[fold.a != 4, ]
 pres <- extract(climateRasters, occtrain.p)
 abs <- extract(climateRasters, occtrain.a)
 allClim <- rbind(pres, abs) %>% data.frame()
-allClim[,"occurrence"] <- c(rep(1, nrow(pres)),rep(0, nrow(abs)))
+
 
 ## Check for covariance
 colin <- usdm::vifcor(allClim[,-ncol(allClim)])
@@ -166,7 +171,6 @@ CurrentcityClimate[,"speciesOcc"] <- predict(max1@models[[bestMax]], Currentcity
 citySummary <- CurrentcityClimate %>% group_by(City) %>% dplyr::select(-ID) %>%  ## drop ID column and average by city
   summarize(meanProb = mean(speciesOcc, na.rm=T), sdProb = sd(speciesOcc, na.rm=T)) %>% data.frame()
 
-citySummary[,"GCM"] <- "currentClimate"
 citySummary[,"RCP"] <- "currentClimate"
 citySummary[,"Year"] <- "currentClimate"
 citySummary[,"species"] <- speciesName %>% gsub("_", " ", .)
@@ -182,6 +186,8 @@ modelData[,"cor"] <- erf@cor ## correlation between test data and model
 modelData[,"TPR"] <- mean(erf@TPR) ## True positive rate
 modelData[,"TNR"] <- mean(erf@TNR) ## True negative rate
 modelData[,"SelectedVars"] <- paste(names(bestClim), collapse='; ')
+modelData[,"Features"] <- as.character(modelOut[1,"features"])
+modelData[,"Regularization"] <- as.character(modelOut[1,"rm"])
 
 
 ## save files
@@ -215,7 +221,7 @@ lapply(c(1,6), function(j)  {
       citySummary <- cityClimate %>% group_by(City, SSP, Year) %>% summarize(meanProb = mean(speciesOcc, na.rm=T),
                                                                                   sdProb = sd(speciesOcc, na.rm=T)) %>% data.frame()
       citySummary[,"species"] <- speciesName %>% gsub("_", " ", .)
-      write.csv(citySummary, paste0("out//models//FutureClimate",speciesName,".csv"), row.names=FALSE)
+      write.csv(citySummary, paste0("out//models//FutureClimate",speciesName,allCombinations[j,1],".csv"), row.names=FALSE)
       
         })
 print(i)
