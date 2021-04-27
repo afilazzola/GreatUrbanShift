@@ -13,7 +13,7 @@ require(MuMIn)
 require(adehabitatHR)
 library(doParallel)
 library(rJava)
-options(java.parameters = "- Xmx1024m")
+options(java.parameters = "-Xmx1024m")
 
 ## Set WD
 setwd("~/projects/def-sapna/afila/GreatUrbanShift")
@@ -63,11 +63,12 @@ cityPoints <- do.call(rbind, allPoints)
 
 ### Bias corrections
 bias <- raster("data//biasFile.tif") ## Load bias file
+gridThinning <- climateRasters[[1]]
 gridThinning[!is.na(gridThinning)] <- 0
 
 ## Set up cluster
 ## specify number of cores available
-cl <- makeCluster(4, type="FORK")
+cl <- makeCluster(20, type="FORK")
 clusterEvalQ(cl, { library(MASS); RNGkind("L'Ecuyer-CMRG") })
 clusterExport(cl, varlist=list("cityPoints","allCombinations","allFutureClimate","speciesFiles","NApoly","climateRasters","gridThinning"),
               envir = environment())
@@ -76,7 +77,7 @@ registerDoParallel(cl)
 ### Need multiple runs to improve Efficacy (n = 10)
 ## https://besjournals.onlinelibrary.wiley.com/doi/full/10.1111/j.2041-210X.2011.00172.x
 
-iterN <- foreach(i = 1:length(speciesFiles),  .combine=c,  .packages=c("rJava","tidyverse","raster","dismo","usdm","MuMIn","doParallel","foreach","adehabitatHR","ncdf4","rgdal","rgeos"), .errorhandling = "remove") %dopar% {
+iterN <- foreach(i = 1:length(speciesFiles),  .combine=c,  .packages=c("rJava","tidyverse","raster","dismo","usdm","MuMIn","doParallel","foreach","adehabitatHR","ncdf4","rgdal","rgeos")) %dopar% {
 
   
 ##### Spatial points processing  
@@ -100,7 +101,7 @@ samplearea <- mcp(sp1, percent=95)
 crs(samplearea) <- crs(sp1)
 
 ## determine the number of background points
-nbackgr <- ifelse(nrow(data.frame(speciesOcc))*10 > 9999, nrow(data.frame(speciesOcc)) ,10000) ## 10k unless occurrences are more than 10k
+nbackgr <- ifelse(nrow(data.frame(sp1))*10 > 9999, nrow(data.frame(sp1)) ,10000) ## 10k unless occurrences are more than 10k
  
 ## generate background points based on biased observations
 ## https://github.com/jamiemkass/ENMeval/issues/26
@@ -141,8 +142,8 @@ bestClim <- climateRasters[[selectVars]]
 ## Select bias weighting for random forest
 
 max1 <- ENMeval::ENMevaluate(data.frame(occtrain.p), bestClim, bg.coords = data.frame(occtrain.a),
-                    fc = c("L", "Q", "P", "LQ", "H", "HQ", "T", "QPH", "QPHT", "LQHP"), RMvalues=seq(0.5, 2, 0.5),
-                    method="randomkfold", kfolds=10, 
+                    fc = c("L", "Q", "P", "LQ", "HQ", "QPH", "QPHT", "LQHP"), RMvalues=seq(0.5, 2, 0.5),
+                    method="randomkfold", kfolds=10, progbar=F,
                     algorithm='maxent.jar')
 
 ## best model
@@ -220,7 +221,4 @@ lapply(c(1,6), function(j)  {
 print(i)
 }
 
-iterN
-
-stopCluster(cl)
 
