@@ -47,11 +47,8 @@ speciesFiles <- grep(currentProcessed,speciesFiles, value=T, invert=T) ## drop t
 speciesFiles <- speciesFiles 
 }
 
-## List future climates
-allFutureClimate <- list.files("data//futureClimate//", recursive = T, full.names = T)
-RCPs <- c("ssp126","ssp370","ssp585")
-window <- c("2041-2060","2081-2100")
-allCombinations <- expand.grid(RCP=RCPs, Year=window, stringsAsFactors = F)
+## load in future climate
+futureClimate <- read.csv("data//futureClimate//futureClimate.csv")
 
 ## Load cities to examine and add buffer
 cities <- read.csv("data//CityList.csv")
@@ -73,7 +70,7 @@ gridThinning[!is.na(gridThinning)] <- 0
 
 ## Set up cluster
 ## specify number of cores available
-cl <- makeCluster(16, type="FORK")
+cl <- makeCluster(20, type="FORK")
 clusterEvalQ(cl, { library(MASS); RNGkind("L'Ecuyer-CMRG") })
 clusterExport(cl, varlist=list("cityPoints","allCombinations","allFutureClimate","speciesFiles","NApoly","climateRasters","gridThinning"),
               envir = environment())
@@ -196,33 +193,18 @@ write.csv(modelData, paste0("out//models//Model",speciesName,".csv"), row.names=
 writeRaster(predOut,  paste0("out//speciesDistro//",speciesName,".tif"), overwrite=T)
 
 ## predict future climate
-selectedVariables <- names(bestClim)
 
-lapply(c(1,6), function(j)  {
-
-      ## Load climate raster 
-      rasterPaths <- paste0("(?=.*",allCombinations[j,1],")(?=.*",allCombinations[j,2],")(?=.*)")
-      futureClimate <- allFutureClimate[grep(rasterPaths, allFutureClimate, perl=T)]
-      futureRaster <- stack(futureClimate) ## load raster
-      names(futureRaster) <- paste0("bio",1:19) ## rename variables
-      futureRaster <- futureRaster[[c(selectedVariables)]] ##select same variables as before
-      futureRaster <- futureRaster %>% crop(., NApoly) %>% mask(., NApoly) ## crop to study area
-      
-      ## Extract city climate
-      cityClimate <- extract(futureRaster, cityPoints, df=T)
-      cityClimate <- cbind(cityClimate, City = as.character(cityPoints@data[,1])) ## join city name
-      cityClimate <- cityClimate[!is.na(cityClimate[,2]),] ## drop missing values
-      cityClimate[,"SSP"] <- allCombinations[j,1]
-      cityClimate[,"Year"] <- allCombinations[j,2]
+      ## Load future climate data
+      cityClimate <- futureClimate
       
       ## predict species
       cityClimate[,"speciesOcc"] <- predict(max1@models[[bestMax]], cityClimate)
       citySummary <- cityClimate %>% group_by(City, SSP, Year) %>% summarize(meanProb = mean(speciesOcc, na.rm=T),
                                                                                   sdProb = sd(speciesOcc, na.rm=T)) %>% data.frame()
       citySummary[,"species"] <- speciesName %>% gsub("_", " ", .)
-      write.csv(citySummary, paste0("out//cityPredict//FutureClimate",speciesName,allCombinations[j,1],".csv"), row.names=FALSE)
+      write.csv(citySummary, paste0("out//cityPredict//FutureClimate",speciesName,".csv"), row.names=FALSE)
       
-        })
+
 
 ## Memory clean-up to try and solve memory leak
 rm(list(predOut, modelData, citySummary, max1, sp1, spLoad))

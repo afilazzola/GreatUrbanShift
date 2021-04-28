@@ -52,4 +52,64 @@ names(ensembleModel) <- paste0("bio",1:19)
 
 writeRaster(ensembleModel, paste0("~//scratch//futureClimate//",selectedModels[i,"timeframe"],"_",selectedModels[i,"SSP"],".tif"))
 })
+
+
+
+### Create a CSV with all the future climates
+## Load cities to examine and add buffer
+cities <- read.csv("data//CityList.csv")
+coordinates(cities) <- ~lon + lat
+proj4string(cities) <- CRS("+proj=longlat +datum=WGS84")
+
+##  Load functions functions
+sampleAround <- function(point, nsamples){
+  cityBuffer <- circles(point, d=10000, lonlat=T, dissolve=F) ## 10 km radius (20 km buffer)
+  cityBuffer <- cityBuffer@polygons
+  crs(cityBuffer) <- CRS("+proj=longlat +datum=WGS84 +no_defs")
+  samplePoints <- spsample(cityBuffer, nsamples, sp=T, type="stratified")
+  return(samplePoints)
+}
+
+
+## Sample points around city in buffer
+allPoints <- lapply(1:nrow(cities), function(i)  {
+  createdPoints <- sampleAround(cities[i,], 100)
+  createdPoints <- SpatialPointsDataFrame(createdPoints, data=data.frame(City = rep(cities@data[i,1], length(createdPoints))))
+}
+)
+cityPoints <- do.call(rbind, allPoints)
+
+## Load NA polygon
+NApoly <- readOGR("data//CanUSA.shp")
+
+
+## List future climates
+allFutureClimate <- list.files("data//futureClimate//", recursive = T, full.names = T)
+RCPs <- c("ssp126","ssp370","ssp585")
+window <- c("2041-2060","2081-2100")
+allCombinations <- expand.grid(RCP=RCPs, Year=window, stringsAsFactors = F)
+
+
+allScenarios <- lapply(1:6, function(j)  {
   
+  ## Load climate raster 
+  rasterPaths <- paste0("(?=.*",allCombinations[j,1],")(?=.*",allCombinations[j,2],")(?=.*)")
+  futureClimate <- allFutureClimate[grep(rasterPaths, allFutureClimate, perl=T)]
+  futureRaster <- stack(futureClimate) ## load raster
+  names(futureRaster) <- paste0("bio",1:19) ## rename variables
+  futureRaster <- futureRaster[[c("bio1","bio3","bio4","bio5","bio6","bio12","bio13","bio14","bio15")]]
+  futureRaster <- futureRaster %>% crop(., NApoly) %>% mask(., NApoly) ## crop to study area
+  
+  ## Extract city climate
+  cityClimate <- extract(futureRaster, cityPoints, df=T)
+  cityClimate <- cbind(cityClimate, City = as.character(cityPoints@data[,1])) ## join city name
+  cityClimate <- cityClimate[!is.na(cityClimate[,2]),] ## drop missing values
+  cityClimate[,"SSP"] <- allCombinations[j,1]
+  cityClimate[,"Year"] <- allCombinations[j,2]
+  cityClimate
+})
+  
+futureClimate <- do.call(rbind, allScenarios)
+futureClimate <- futureClimate %>% dplyr::select(-ID)
+
+write.csv(futureClimate, "data//futureClimate//futureClimate.csv", row.names=FALSE)
