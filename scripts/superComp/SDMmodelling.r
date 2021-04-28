@@ -82,7 +82,7 @@ registerDoParallel(cl)
 ### Need multiple runs to improve Efficacy (n = 10)
 ## https://besjournals.onlinelibrary.wiley.com/doi/full/10.1111/j.2041-210X.2011.00172.x
 
-iterN <- foreach(i = 1:length(speciesFiles),  .combine=c,  .packages=c("rJava","tidyverse","raster","dismo","doParallel","foreach","adehabitatHR","ncdf4","rgdal","rgeos")) %dopar% {
+foreach(i = 1:length(speciesFiles),   .packages=c("rJava","tidyverse","raster","dismo","doParallel","foreach","adehabitatHR","ncdf4","rgdal","rgeos")) %dopar% {
 
   
 ##### Spatial points processing  
@@ -169,10 +169,9 @@ CurrentcityClimate <- CurrentcityClimate[!is.na(CurrentcityClimate[,2]),] ## dro
 ## predict species
 CurrentcityClimate[,"speciesOcc"] <- predict(max1@models[[bestMax]], CurrentcityClimate)
 citySummary <- CurrentcityClimate %>% group_by(City) %>% dplyr::select(-ID) %>%  ## drop ID column and average by city
+  mutate(SSP = "currentClimate", Year = "currentClimate" ) %>% 
   summarize(meanProb = mean(speciesOcc, na.rm=T), sdProb = sd(speciesOcc, na.rm=T)) %>% data.frame()
 
-citySummary[,"RCP"] <- "currentClimate"
-citySummary[,"Year"] <- "currentClimate"
 citySummary[,"species"] <- speciesName %>% gsub("_", " ", .)
 
 write.csv(citySummary, paste0("out//cityPredict//CurrentClimate",speciesName,".csv"), row.names=FALSE)
@@ -221,10 +220,14 @@ lapply(c(1,6), function(j)  {
       citySummary <- cityClimate %>% group_by(City, SSP, Year) %>% summarize(meanProb = mean(speciesOcc, na.rm=T),
                                                                                   sdProb = sd(speciesOcc, na.rm=T)) %>% data.frame()
       citySummary[,"species"] <- speciesName %>% gsub("_", " ", .)
-      write.csv(citySummary, paste0("out//models//FutureClimate",speciesName,allCombinations[j,1],".csv"), row.names=FALSE)
+      write.csv(citySummary, paste0("out//cityPredict//FutureClimate",speciesName,allCombinations[j,1],".csv"), row.names=FALSE)
       
         })
-print(i)
+
+## Memory clean-up to try and solve memory leak
+rm(list(predOut, modelData, citySummary, max1, sp1, spLoad))
+gc()
+
 }
 
 
