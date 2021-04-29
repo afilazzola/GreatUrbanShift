@@ -35,7 +35,7 @@ allClimate <- allCurrent %>% dplyr::select(City, species, currentProb = meanProb
 ## Differences in species
 ggplot(allClimate, aes(x=species, y= changeProb, fill=Year)) + geom_boxplot() + coord_flip() +
   scale_fill_manual(values = c("#E69F00", "#56B4E9")) + theme_classic() + ylab("Change in Predicted Occurrence") +
-  geom_hline(yintercept=0, lty=2)
+  geom_hline(yintercept=0, lty=2) + facet_grid(~SSP)
 
 
 

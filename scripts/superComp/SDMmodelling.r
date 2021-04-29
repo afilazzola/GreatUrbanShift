@@ -72,7 +72,7 @@ gridThinning[!is.na(gridThinning)] <- 0
 ## specify number of cores available
 cl <- makeCluster(20, type="FORK")
 clusterEvalQ(cl, { library(MASS); RNGkind("L'Ecuyer-CMRG") })
-clusterExport(cl, varlist=list("cityPoints","allCombinations","allFutureClimate","speciesFiles","NApoly","climateRasters","gridThinning"),
+clusterExport(cl, varlist=list("cityPoints","futureClimate","speciesFiles","NApoly","climateRasters","gridThinning"),
               envir = environment())
 registerDoParallel(cl)
 
@@ -144,7 +144,7 @@ bestClim <- climateRasters[[selectVars]]
 ## Select bias weighting for random forest
 
 max1 <- ENMeval::ENMevaluate(data.frame(occtrain.p), bestClim, bg.coords = data.frame(occtrain.a),
-                    fc = c("L", "Q", "P", "LQ", "HQ", "QPH", "QPHT", "LQHP"), RMvalues=seq(0.5, 2, 0.5),
+                    fc = c("L", "Q", "P", "LQ", "HQ", "QPH", "QPHT", "LQHP"), RMvalues=seq(0.5, 3, 0.5),
                     method="randomkfold", kfolds=10, progbar=F,
                     algorithm='maxent.jar')
 
@@ -207,7 +207,7 @@ writeRaster(predOut,  paste0("out//speciesDistro//",speciesName,".tif"), overwri
 
 
 ## Memory clean-up to try and solve memory leak
-rm(list(predOut, modelData, citySummary, max1, sp1, spLoad))
+rm(list= c("predOut", "modelData", "citySummary", "max1", "sp1", "spLoad","modelOut"))
 gc()
 
 }
