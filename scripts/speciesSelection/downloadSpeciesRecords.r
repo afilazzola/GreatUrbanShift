@@ -59,4 +59,38 @@ geographyPatterns <- foreach(j = 1:nrow(masterList), .combine=c,  .packages=c("t
                                speciesName <- gsub(" ", "_", masterList[j,"species"])
                                write.csv(sampleSpp, paste0("data//speciesOcc//",speciesName,".csv"), row.names=FALSE)
                                print(j)
-                             }
+}
+
+
+
+
+
+#### Create Download request directly from GBIF
+listOut <- lapply(1:nrow(masterList), function(i) {
+  tryCatch({
+masterList[i,"taxonKeys"] <- as.character(masterList$species[i]) %>% 
+  taxize::get_gbifid_(method="backbone")  %>% 
+  imap(~ .x %>% mutate(original_sciname = .y)) %>% 
+  bind_rows() %>% # combine all data.frames into one
+  filter(matchtype == "EXACT" & status == "ACCEPTED") %>% 
+  pull(usagekey) # get the gbif taxonkeys
+} , error=function(e) NA)
+}) ; beepr::beep(sound=6)
+masterList["taxonKeys"] <- do.call(c, listOut) ## combine into one list of taxon keys
+masterList <- masterList %>% filter(!is.na(taxonKeys)) ## drop species without GBIF matches
+
+res <- occ_download(
+pred_in("taxonKey", masterList[,"taxonKeys"] ),
+pred("hasCoordinate", TRUE),
+pred("hasGeospatialIssue", FALSE),
+pred_in("year", 2000:2020),
+pred_within(NApolyBB),
+format = "SIMPLE_CSV",
+user = "afilazzola", 
+pwd = "LATyKeMxGUXnqY7",
+email = "alex.filazzola@outlook.com"
+)
+
+occ_download_meta(res)
+z <- occ_download_get(res)
+df <- occ_download_import(z)
