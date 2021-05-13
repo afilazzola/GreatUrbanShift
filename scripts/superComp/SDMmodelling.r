@@ -3,12 +3,10 @@
 ## Libraries
 library(tidyverse)
 library(raster)
-library(ncdf4)
 library(rgdal)
 library(dismo)
 library(rgeos)
 library(foreach)
-require(adehabitatHR)
 library(doParallel)
 library(rJava)
 options(java.parameters = "-Xmx1024m")
@@ -39,15 +37,16 @@ climateRasters <- climateRasters %>% crop(., NApoly) %>% mask(., NApoly) ## load
 ## Load species
 speciesFiles <- list.files("data//speciesOcc", full.names = T)
 ## Drop species that have already been processed
-currentProcessed <- list.files("out//speciesDistro//")
+currentProcessed <- list.files("out//models//")
 if(length(currentProcessed) > 0){  ## if downloaded species exist, skip those species
-currentProcessed <- currentProcessed %>% gsub(".tif", "", . ) %>% paste0(., collapse="|") ## create a list of species already processed
+currentProcessed <- currentProcessed %>% gsub("Model", "", . ) %>%  gsub("_", " ", . ) %>% paste0(., collapse="|") ## create a list of species already processed
 speciesFiles <- grep(currentProcessed,speciesFiles, value=T, invert=T) ## drop those species
 } else { ## if no species exist, just use the regular species list
 speciesFiles <- speciesFiles 
 }
 
-## load in future climate
+## load in current and future climate
+CurrentcityClimate <- read.csv("data//currentCityClimate.csv")
 futureClimate <- read.csv("data//futureClimate//futureClimate.csv")
 
 ## Load cities to examine and add buffer
@@ -64,28 +63,30 @@ allPoints <- lapply(1:nrow(cities), function(i)  {
 cityPoints <- do.call(rbind, allPoints)
 
 ### Bias corrections
-bias <- raster("data//biasFile.tif") ## Load bias file
+# bias <- raster("data//biasFile.tif") ## Load bias file
 gridThinning <- climateRasters[[1]]
 gridThinning[!is.na(gridThinning)] <- 0
 
 ## Set up cluster
 ## specify number of cores available
-cl <- makeCluster(20, type="FORK")
+cl <- makeCluster(10, type="FORK")
 clusterEvalQ(cl, { library(MASS); RNGkind("L'Ecuyer-CMRG") })
-clusterExport(cl, varlist=list("cityPoints","futureClimate","speciesFiles","NApoly","climateRasters","gridThinning"),
+clusterExport(cl, varlist=list("cityPoints","futureClimate","speciesFiles","NApoly","climateRasters","gridThinning","CurrentcityClimate"),
               envir = environment())
 registerDoParallel(cl)
 
 ### Need multiple runs to improve Efficacy (n = 10)
 ## https://besjournals.onlinelibrary.wiley.com/doi/full/10.1111/j.2041-210X.2011.00172.x
 
-foreach(i = 1:length(speciesFiles),   .packages=c("rJava","tidyverse","raster","dismo","doParallel","foreach","adehabitatHR","ncdf4","rgdal","rgeos")) %dopar% {
+foreach(i = 1:length(speciesFiles),   .packages=c("rJava","tidyverse","raster","dismo","doParallel","foreach","rgdal","rgeos")) %dopar% {
 
   
 ##### Spatial points processing  
           
 ## Load occurrences
-spLoad <- read.csv(speciesFiles[i])
+spLoad <- read.csv(speciesFiles[i], header=F, stringsAsFactors = F)
+names(spLoad) <- c("GBIF-ID","uniqueID","Phylum","Class","Order","Family","Genus","Species","decimalLatitude","decimalLongitude","day","month","year")
+speciesInfo <-  spLoad[1,c("Phylum","Class","Order","Family","Genus","Species")]
 coordinates(spLoad) <- ~decimalLongitude + decimalLatitude ## Transform occurrences to spdataframe
 proj4string(spLoad) <- CRS("+proj=longlat +datum=WGS84")
 
@@ -99,19 +100,26 @@ proj4string(sp1) <- CRS("+proj=longlat +datum=WGS84")
 speciesName <- basename(speciesFiles[i]) %>% gsub(".csv", "", .) %>% gsub(" ", "_", .)
 
 ## Generate sample area for background points
-samplearea <- mcp(sp1, percent=95)
+samplearea <- raster::buffer(sp1, width=100000, dissolve=T) ## 100 km buffer
 crs(samplearea) <- crs(sp1)
 
 ## determine the number of background points
-nbackgr <- ifelse(nrow(data.frame(sp1))*10 > 9999, nrow(data.frame(sp1)) ,10000) ## 10k unless occurrences are more than 10k
+nbackgr <- ifelse(nrow(data.frame(sp1)) > 9999, nrow(data.frame(sp1)) ,10000) ## 10k unless occurrences are more than 10k
  
+
+####### Unable to use bias file method - restrict background instead
 ## generate background points based on biased observations
 ## https://github.com/jamiemkass/ENMeval/issues/26
-biasCut <- mask(bias, samplearea) ## mask bias area to species extent
-biasValues <- values(biasCut)
-biasValues[is.na(biasValues)] <- 0
-backgr <- xyFromCell(biasCut, sample(ncell(biasCut), nbackgr, prob=biasValues))
+# biasCut <- mask(bias, samplearea) ## mask bias area to species extent
+# biasValues <- values(biasCut)
+# biasValues[is.na(biasValues)] <- 0
+# backgr <- xyFromCell(biasCut, sample(ncell(biasCut), nbackgr, prob=biasValues))
 
+## Select points
+samplearea <- mask(gridThinning, samplearea)
+backgr <- randomPoints(samplearea, n=nbackgr, p =sp1)  %>% data.frame() ## sample points, exclude cells where presence occurs
+coordinates(backgr) <- ~x+y ## re-assign as spatial points
+proj4string(backgr)  <- crs(sp1) ## assign CRS
 
 ## withhold 20% for sample testing
 fold.p <- kfold(sp1, k=5)
@@ -137,7 +145,7 @@ selectVars <-  colin@results$Variables
 
 ###### Conduct species distribution modelling
 
-## Use best variables
+## Use best variables without colinearity issues
 bestClim <- climateRasters[[selectVars]]
 
 
@@ -151,21 +159,14 @@ max1 <- ENMeval::ENMevaluate(data.frame(occtrain.p), bestClim, bg.coords = data.
 ## best model
 bestMax <- which(max1@results$AICc==min(max1@results$AICc))[1]
 modelOut <- max1@results[bestMax,]
-predOut <-  raster::predict(bestClim, max1@models[[bestMax]],  type="logistic")
+varImp <- ENMeval::var.importance(max1@models[[bestMax]])
 
 ## evaluate
 erf <- evaluate(occtest.p, occtest.a, max1@models[[bestMax]], bestClim)
 
-
-## Extract current city climate
-CurrentcityClimate <- extract(bestClim, cityPoints, df=T)
-CurrentcityClimate <- cbind(CurrentcityClimate, City = as.character(cityPoints@data[,1])) ## join city name
-CurrentcityClimate <- CurrentcityClimate[!is.na(CurrentcityClimate[,2]),] ## drop missing values
-
-
 ## predict species
-CurrentcityClimate[,"speciesOcc"] <- predict(max1@models[[bestMax]], CurrentcityClimate)
-citySummary <- CurrentcityClimate %>% group_by(City) %>% dplyr::select(-ID) %>%  ## drop ID column and average by city
+CurrentcityClimate[,"speciesOcc"] <- predict(max1@models[[bestMax]], CurrentcityClimate,  type="logistic")
+citySummary <- CurrentcityClimate %>% group_by(City) %>%  ##  average by city
   mutate(SSP = "currentClimate", Year = "currentClimate" ) %>% 
   summarize(meanProb = mean(speciesOcc, na.rm=T), sdProb = sd(speciesOcc, na.rm=T)) %>% data.frame()
 
@@ -174,14 +175,17 @@ citySummary[,"species"] <- speciesName %>% gsub("_", " ", .)
 write.csv(citySummary, paste0("out//cityPredict//CurrentClimate",speciesName,".csv"), row.names=FALSE)
 
 ## create output dataframe
-modelData <- data.frame(species =  speciesName %>% gsub("_", " ", .))
+modelData <- speciesInfo 
+modelData[,"fileName"] <- basename(speciesFiles[i])
 modelData[,"AUC"] <- erf@auc ## AUC value
 modelData[,"np"] <- erf@np ## number of presence points used for evaluation
 modelData[,"na"] <- erf@na ## number of absence points used for evaluation
 modelData[,"cor"] <- erf@cor ## correlation between test data and model
 modelData[,"TPR"] <- mean(erf@TPR) ## True positive rate
 modelData[,"TNR"] <- mean(erf@TNR) ## True negative rate
-modelData[,"SelectedVars"] <- paste(names(bestClim), collapse='; ')
+modelData[,"importantVars"] <- paste0(varImp$variable, collapse=";")
+modelData[,"importantValue"] <- paste0(varImp$permutation.importance, collapse=";")
+modelData[,"percentContribution"] <- paste0(varImp$percent.contribution, collapse=";")
 modelData[,"Features"] <- as.character(modelOut[1,"features"])
 modelData[,"Regularization"] <- as.character(modelOut[1,"rm"])
 
@@ -189,8 +193,6 @@ modelData[,"Regularization"] <- as.character(modelOut[1,"rm"])
 ## save files
 write.csv(modelData, paste0("out//models//Model",speciesName,".csv"), row.names=FALSE)
 
-## write raster
-writeRaster(predOut,  paste0("out//speciesDistro//",speciesName,".tif"), overwrite=T)
 
 ## predict future climate
 
@@ -198,7 +200,7 @@ writeRaster(predOut,  paste0("out//speciesDistro//",speciesName,".tif"), overwri
       cityClimate <- futureClimate
       
       ## predict species
-      cityClimate[,"speciesOcc"] <- predict(max1@models[[bestMax]], cityClimate)
+      cityClimate[,"speciesOcc"] <- predict(max1@models[[bestMax]], cityClimate,  type="logistic")
       citySummary <- cityClimate %>% group_by(City, SSP, Year) %>% summarize(meanProb = mean(speciesOcc, na.rm=T),
                                                                                   sdProb = sd(speciesOcc, na.rm=T)) %>% data.frame()
       citySummary[,"species"] <- speciesName %>% gsub("_", " ", .)
@@ -207,7 +209,7 @@ writeRaster(predOut,  paste0("out//speciesDistro//",speciesName,".tif"), overwri
 
 
 ## Memory clean-up to try and solve memory leak
-rm(list= c("predOut", "modelData", "citySummary", "max1", "sp1", "spLoad","modelOut"))
+rm(list= c("modelData", "citySummary", "max1", "sp1", "spLoad","modelOut","bestClim"))
 gc()
 
 }
