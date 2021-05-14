@@ -45,6 +45,9 @@ speciesFiles <- grep(currentProcessed,speciesFiles, value=T, invert=T) ## drop t
 speciesFiles <- speciesFiles 
 }
 
+## Load Master species list
+sppList <- read.csv("data//cityData//UpdatedSpeciesList.csv")
+
 ## load in current and future climate
 CurrentcityClimate <- read.csv("data//currentCityClimate.csv")
 futureClimate <- read.csv("data//futureClimate//futureClimate.csv")
@@ -69,16 +72,16 @@ gridThinning[!is.na(gridThinning)] <- 0
 
 ## Set up cluster
 ## specify number of cores available
-cl <- makeCluster(10, type="FORK")
+cl <- makeCluster(16, type="FORK")
 clusterEvalQ(cl, { library(MASS); RNGkind("L'Ecuyer-CMRG") })
-clusterExport(cl, varlist=list("cityPoints","futureClimate","speciesFiles","NApoly","climateRasters","gridThinning","CurrentcityClimate"),
+clusterExport(cl, varlist=list("sppList","cityPoints","futureClimate","speciesFiles","NApoly","climateRasters","gridThinning","CurrentcityClimate"),
               envir = environment())
 registerDoParallel(cl)
 
 ### Need multiple runs to improve Efficacy (n = 10)
 ## https://besjournals.onlinelibrary.wiley.com/doi/full/10.1111/j.2041-210X.2011.00172.x
 
-foreach(i = 1:length(speciesFiles),   .packages=c("rJava","tidyverse","raster","dismo","doParallel","foreach","rgdal","rgeos")) %dopar% {
+foreach(i = 1:length(speciesFiles), .errorhandling=c("remove"), .packages=c("rJava","tidyverse","raster","dismo","doParallel","foreach","rgdal","rgeos")) %dopar% {
 
   
 ##### Spatial points processing  
@@ -86,7 +89,11 @@ foreach(i = 1:length(speciesFiles),   .packages=c("rJava","tidyverse","raster","
 ## Load occurrences
 spLoad <- read.csv(speciesFiles[i], header=F, stringsAsFactors = F)
 names(spLoad) <- c("GBIF-ID","uniqueID","Phylum","Class","Order","Family","Genus","Species","decimalLatitude","decimalLongitude","day","month","year")
-speciesInfo <-  spLoad[1,c("Phylum","Class","Order","Family","Genus","Species")]
+
+## Get species info
+speciesInfo <- sppList[sppList$species %in% unique(spLoad$Species),] %>% dplyr::select(-city) %>% data.frame()
+
+## Assign spatial coordinates
 coordinates(spLoad) <- ~decimalLongitude + decimalLatitude ## Transform occurrences to spdataframe
 proj4string(spLoad) <- CRS("+proj=longlat +datum=WGS84")
 

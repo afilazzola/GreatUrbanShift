@@ -180,5 +180,21 @@ write.csv(sampleSpp, paste0("data//scratch//speciesSingletons//",missingSpecies[
 print(paste0("Progress ", round(i / nrow(missingSpecies),3)*100," %"))}, error=function(e) print(paste0(missingSpecies[i,"species"], " Failed")))
 }
 
+## Update species list
+masterListUpdated <- masterList
+masterListUpdated <- masterListUpdated %>% dplyr::select(-kingdom, -phylum, -class) ## drop old phylogeny columns
+masterListUpdated <- masterListUpdated %>% filter(! taxonKeys %in% missingSpecies$taxonKeys) ## drop species unable to download
 
-## Molothrus aeneus last one
+for(i in 1548:nrow(masterList)) {
+speciesInfo <- name_usage(key=masterList[i,"taxonKeys"])$data %>% data.frame()
+### Check to make sure all columns are present
+speciesInfo <- speciesInfo %>% mutate(class = ifelse("class" %in% names(.), class, NA),order = ifelse("order" %in% names(.), order, NA))
+masterListUpdated[i,c("Kingdom","Phylum","Class","Order","Family","Genus")] <- speciesInfo[,c("kingdom","phylum","class","order","family","genus")]
+}
+
+
+write.csv(masterListUpdated, "data//cityData//UpdatedSpeciesList.csv", row.names = F)
+
+
+
+
