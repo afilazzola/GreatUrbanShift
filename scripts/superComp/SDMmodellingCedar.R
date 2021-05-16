@@ -35,7 +35,7 @@ climateRasters <- climateRasters %>% crop(., NApoly) %>% mask(., NApoly) ## load
 
 
 ## Load species
-speciesFiles <- list.files("data//speciesOcc", full.names = T)
+speciesFiles <- list.files("data//speciesOcc2", full.names = T)
 ## Drop species that have already been processed
 currentProcessed <- list.files("out//models//")
 if(length(currentProcessed) > 0){  ## if downloaded species exist, skip those species
@@ -72,7 +72,7 @@ gridThinning[!is.na(gridThinning)] <- 0
 
 ## Set up cluster
 ## specify number of cores available
-cl <- makeCluster(14, type="FORK")
+cl <- makeCluster(9, type="FORK")
 clusterEvalQ(cl, { library(MASS); RNGkind("L'Ecuyer-CMRG") })
 clusterExport(cl, varlist=list("sppList","cityPoints","futureClimate","speciesFiles","NApoly","climateRasters","gridThinning","CurrentcityClimate"),
               envir = environment())
@@ -87,8 +87,7 @@ foreach(i = 1:length(speciesFiles), .errorhandling=c("remove"), .packages=c("rJa
 ##### Spatial points processing  
           
 ## Load occurrences
-spLoad <- read.csv(speciesFiles[i], header=F, stringsAsFactors = F)
-names(spLoad) <- c("GBIF-ID","uniqueID","Phylum","Class","Order","Family","Genus","Species","decimalLatitude","decimalLongitude","day","month","year")
+spLoad <- read.csv(speciesFiles[i], header=T, stringsAsFactors = F)
 
 ## Get species info
 speciesInfo <- sppList[sppList$species %in% unique(spLoad$Species),] %>% dplyr::select(-city) %>% data.frame()
