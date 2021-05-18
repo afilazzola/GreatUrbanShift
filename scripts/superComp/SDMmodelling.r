@@ -87,11 +87,10 @@ foreach(i = 1:length(speciesFiles),  .packages=c("rJava","tidyverse","raster","d
 ##### Spatial points processing  
           
 ## Load occurrences
-spLoad <- read.csv(speciesFiles[i], header=F, stringsAsFactors = F)
-names(spLoad) <- c("GBIF-ID","uniqueID","Phylum","Class","Order","Family","Genus","Species","decimalLatitude","decimalLongitude","day","month","year")
+spLoad <- read.csv(speciesFiles[i], stringsAsFactors = F)
 
 ## Get species info
-speciesInfo <- sppList[sppList$species %in% unique(spLoad$Species),] %>% dplyr::select(-city) %>% data.frame()
+speciesInfo <- sppList[sppList$species %in% unique(spLoad$species),] %>% dplyr::select(-city) %>% data.frame()
 
 ## Assign spatial coordinates
 coordinates(spLoad) <- ~decimalLongitude + decimalLatitude ## Transform occurrences to spdataframe
