@@ -81,7 +81,7 @@ registerDoParallel(cl)
 ### Need multiple runs to improve Efficacy (n = 10)
 ## https://besjournals.onlinelibrary.wiley.com/doi/full/10.1111/j.2041-210X.2011.00172.x
 
-foreach(i = 1:length(speciesFiles), .errorhandling=c("remove"), .packages=c("rJava","tidyverse","raster","dismo","doParallel","foreach","rgdal","rgeos")) %dopar% {
+foreach(i = 1:length(speciesFiles),  .packages=c("rJava","tidyverse","raster","dismo","doParallel","foreach","rgdal","rgeos")) %dopar% {
 
   
 ##### Spatial points processing  

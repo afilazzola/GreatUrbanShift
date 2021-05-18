@@ -1,7 +1,9 @@
 ###### SDM modelling
 
 ## Libraries
-library(tidyverse)
+library(dplyr) ## load tidyverse separaretly because Broom failure
+library(tidyr)
+library(purrr)
 library(raster)
 library(rgdal)
 library(dismo)
@@ -81,7 +83,7 @@ registerDoParallel(cl)
 ### Need multiple runs to improve Efficacy (n = 10)
 ## https://besjournals.onlinelibrary.wiley.com/doi/full/10.1111/j.2041-210X.2011.00172.x
 
-foreach(i = 1:length(speciesFiles), .errorhandling=c("remove"), .packages=c("rJava","tidyverse","raster","dismo","doParallel","foreach","rgdal","rgeos")) %dopar% {
+foreach(i = 1:length(speciesFiles),   .packages=c("rJava","tidyverse","raster","dismo","doParallel","foreach","rgdal","rgeos")) %dopar% {
 
   
 ##### Spatial points processing  
@@ -90,7 +92,7 @@ foreach(i = 1:length(speciesFiles), .errorhandling=c("remove"), .packages=c("rJa
 spLoad <- read.csv(speciesFiles[i], header=T, stringsAsFactors = F)
 
 ## Get species info
-speciesInfo <- sppList[sppList$species %in% unique(spLoad$Species),] %>% dplyr::select(-city) %>% data.frame()
+speciesInfo <- sppList[sppList$species %in% unique(spLoad$species),] %>% dplyr::select(-city) %>% data.frame()
 
 ## Assign spatial coordinates
 coordinates(spLoad) <- ~decimalLongitude + decimalLatitude ## Transform occurrences to spdataframe
