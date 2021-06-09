@@ -2,7 +2,7 @@
 #SBATCH --account=def-sapna   # specify account
 #SBATCH --ntasks=1    ## specify more nodes to be available
 #SBATCH --time=02:59:00         # time for operation to run 
-#SBATCH --mem=50G 				## specify memory for operation
+#SBATCH --mem=14G 				## specify memory for operation
 #SBATCH --mail-user=alex.filazzola@outlook.com   ## specify email for notification
 #SBATCH --mail-type=BEGIN
 #SBATCH --mail-type=END

@@ -7,8 +7,6 @@ library(raster)
 library(rgdal)
 library(dismo)
 library(rgeos)
-library(foreach)
-library(doParallel)
 library(rJava)
 options(java.parameters = "-Xmx1024m")
 
@@ -36,18 +34,7 @@ climateRasters <- climateRasters %>% crop(., NApoly) %>% mask(., NApoly) ## load
 
 
 ## Load species
-speciesFiles <- list.files("data//speciesOcc", full.names = T)
-speciesFiles <- read.csv("data//SpeciesListErrorFree.csv", stringsAsFactors = F) ## select only species without errors
-speciesFiles <- as.vector(speciesFiles[,1])
-speciesFiles <- speciesFiles[!is.na(speciesFiles)]
-## Drop species that have already been processed
-currentProcessed <- list.files("out//models//")
-if(length(currentProcessed) > 0){  ## if downloaded species exist, skip those species
-currentProcessed <- currentProcessed %>% gsub("Model", "", . ) %>%  gsub("_", " ", . ) %>% paste0(., collapse="|") ## create a list of species already processed
-speciesFiles <- grep(currentProcessed,speciesFiles, value=T, invert=T) ## drop those species
-} else { ## if no species exist, just use the regular species list
-speciesFiles <- speciesFiles 
-}
+speciesFilepath <- commandArgs(trailingOnly = TRUE)
 
 ## Load Master species list
 sppList <- read.csv("data//cityData//UpdatedSpeciesList.csv")
@@ -61,37 +48,15 @@ cities <- read.csv("data//CityList.csv")
 coordinates(cities) <- ~lon + lat
 proj4string(cities) <- CRS("+proj=longlat +datum=WGS84")
 
-## Sample points around city in buffer
-allPoints <- lapply(1:nrow(cities), function(i)  {
-  createdPoints <- sampleAround(cities[i,], 100)
-  createdPoints <- SpatialPointsDataFrame(createdPoints, data=data.frame(City = rep(cities@data[i,1], length(createdPoints))))
-}
-)
-cityPoints <- do.call(rbind, allPoints)
-
 ### Bias corrections
-# bias <- raster("data//biasFile.tif") ## Load bias file
 gridThinning <- climateRasters[[1]]
 gridThinning[!is.na(gridThinning)] <- 0
 
-## Set up cluster
-## specify number of cores available
-cl <- makeCluster(9, type="FORK")
-clusterEvalQ(cl, { library(MASS); RNGkind("L'Ecuyer-CMRG") })
-clusterExport(cl, varlist=list("sppList","cityPoints","futureClimate","speciesFiles","NApoly","climateRasters","gridThinning","CurrentcityClimate"),
-              envir = environment())
-registerDoParallel(cl)
 
-### Need multiple runs to improve Efficacy (n = 10)
-## https://besjournals.onlinelibrary.wiley.com/doi/full/10.1111/j.2041-210X.2011.00172.x
-
-iter <-foreach(i = 1:length(speciesFiles), .errorhandling = "remove", .packages=c("rJava","dplyr","tidyr","raster","dismo","doParallel","foreach","rgdal","rgeos")) %dopar% {
-
-  
 ##### Spatial points processing  
           
 ## Load occurrences
-spLoad <- read.csv(speciesFiles[i], stringsAsFactors = F)
+spLoad <- read.csv(speciesFilepath, stringsAsFactors = F)
 
 ## Get species info
 speciesInfo <- sppList[sppList$species %in% unique(spLoad$species),] %>% dplyr::select(-city) %>% data.frame()
@@ -107,7 +72,7 @@ coordinates(sp1) <- ~decimalLongitude + decimalLatitude ## Transform occurrences
 proj4string(sp1) <- CRS("+proj=longlat +datum=WGS84")
 
 ## list species name
-speciesName <- basename(speciesFiles[i]) %>% gsub(".csv", "", .) %>% gsub(" ", "_", .)
+speciesName <- basename(speciesFilepath) %>% gsub(".csv", "", .) %>% gsub(" ", "_", .)
 
 ## Generate sample area for background points
 samplearea <- raster::buffer(sp1, width=100000, dissolve=T) ## 100 km buffer
@@ -118,13 +83,6 @@ nbackgr <- ifelse(nrow(data.frame(sp1)) > 9999, nrow(data.frame(sp1)) ,10000) ##
  
 
 ####### Unable to use bias file method - restrict background instead
-## generate background points based on biased observations
-## https://github.com/jamiemkass/ENMeval/issues/26
-# biasCut <- mask(bias, samplearea) ## mask bias area to species extent
-# biasValues <- values(biasCut)
-# biasValues[is.na(biasValues)] <- 0
-# backgr <- xyFromCell(biasCut, sample(ncell(biasCut), nbackgr, prob=biasValues))
-
 ## Select points
 samplearea <- mask(gridThinning, samplearea)
 backgr <- randomPoints(samplearea, n=nbackgr, p =sp1)  %>% data.frame() ## sample points, exclude cells where presence occurs
@@ -186,7 +144,7 @@ write.csv(citySummary, paste0("out//cityPredict//CurrentClimate",speciesName,".c
 
 ## create output dataframe
 modelData <- speciesInfo 
-modelData[,"fileName"] <- basename(speciesFiles[i])
+modelData[,"fileName"] <- basename(speciesFilepath)
 modelData[,"AUC"] <- erf@auc ## AUC value
 modelData[,"np"] <- erf@np ## number of presence points used for evaluation
 modelData[,"na"] <- erf@na ## number of absence points used for evaluation
@@ -217,11 +175,5 @@ write.csv(modelData, paste0("out//models//Model",speciesName,".csv"), row.names=
       write.csv(citySummary, paste0("out//cityPredict//FutureClimate",speciesName,".csv"), row.names=FALSE)
       
 
-
-## Memory clean-up to try and solve memory leak
-rm(list= c("modelData", "citySummary", "max1", "sp1", "spLoad","modelOut","bestClim"))
-gc()
-
-}
 
 
