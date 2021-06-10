@@ -72,7 +72,7 @@ coordinates(sp1) <- ~decimalLongitude + decimalLatitude ## Transform occurrences
 proj4string(sp1) <- CRS("+proj=longlat +datum=WGS84")
 
 ## list species name
-speciesName <- basename(speciesFilepath) %>% gsub(".csv", "", .) %>% gsub(" ", "_", .)
+speciesName <- basename(speciesFilepath) %>% gsub(".csv", "", .)
 
 ## Generate sample area for background points
 samplearea <- raster::buffer(sp1, width=100000, dissolve=T) ## 100 km buffer
@@ -146,6 +146,8 @@ write.csv(citySummary, paste0("out//cityPredict//CurrentClimate",speciesName,".c
 modelData <- speciesInfo 
 modelData[,"fileName"] <- basename(speciesFilepath)
 modelData[,"AUC"] <- erf@auc ## AUC value
+modelData[,"nobs"] <- nrow(spLoad) ## number of presence points used overall
+modelData[,"nthin"] <- nrow(sp1) ## number of presence points used after thinned
 modelData[,"np"] <- erf@np ## number of presence points used for evaluation
 modelData[,"na"] <- erf@na ## number of absence points used for evaluation
 modelData[,"cor"] <- erf@cor ## correlation between test data and model

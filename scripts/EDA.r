@@ -2,6 +2,7 @@
 
 ## Libraries
 library(tidyverse)
+library(ggridges)
 
 ## Look at the model results
 models <- list.files("out//models//", full.names = T)
@@ -89,3 +90,48 @@ ggplot(taxaClimate %>% filter(Year == "2081-2100")%>% filter(Class == "Aves"), a
   geom_density_ridges(stat="binline") + 
   scale_fill_manual(values = c("#E69F00", "#56B4E9")) + theme_classic() + ylab("Change in Predicted Occurrence") +
   geom_hline(yintercept=0, lty=2) + facet_grid(~SSP) 
+
+
+taxaClimateSimplified <- taxaClimate %>% filter(!(Phylum=="Platyhelminthes" | Phylum=="Cnidaria" | is.na(Order)| is.na(Class)))
+
+ggplot(taxaClimateSimplified %>% filter(Year == "2081-2100" & SSP == "ssp585"), aes(y=Order, x= changeProb, fill=Class)) + 
+  geom_density_ridges(stat="binline") + 
+  theme_classic() + xlab("Change in Predicted Occurrence") +
+  geom_hline(yintercept=0, lty=2) + facet_wrap(Phylum~., scales = "free_y") +
+  scale_fill_manual(values=c(RColorBrewer::brewer.pal(n=12, "Paired"), "black")) +
+  geom_vline(xintercept = 0, lty=2)
+
+
+
+
+####### Define regions for cities that are most affected
+
+cityStats <- read.csv("data//cityData//CityCharacteristics.csv") %>% dplyr::select(City = CityName, ecozone = NA_L1NAME, bio1:bio15, lon, lat)
+
+modelClimateCity <- merge(allClimate, cityStats, by="City")
+
+
+summarizedRegions <- modelClimateCity %>% group_by(ecozone, species, SSP, Year ) %>% summarize(diff=mean(changeProb))
+
+
+
+ggplot(data=summarizedRegions, aes(x=diff, y= ecozone, fill=ecozone)) + geom_density_ridges(na.rm=T, stat="binline") + theme_ridges() + 
+ theme_classic() + ylab("Change in Predicted Occurrence") + scale_fill_manual(values=RColorBrewer::brewer.pal(n=7, "Dark2")) +
+  geom_hline(yintercept=0, lty=2) + geom_vline(xintercept = 0, lty=2) + facet_grid(Year~SSP)
+
+
+### City map of globe
+averageCity <- modelClimateCity %>% filter(!is.infinite(changeProb)) %>%  
+  group_by(City, lat, lon,  SSP, Year ) %>% summarize(diff=mean(changeProb))
+
+mp <- NULL
+mapWorld <- borders("world", colour="white", fill="gray75") # create a layer of borders
+mp <- ggplot() + theme_classic()+  mapWorld + xlim(-180,-30) + ylim(-20, 90)
+
+mp <- mp+ geom_point(data=data.frame(averageCity) %>% filter(Year=="2081-2100") , aes(x=lon, y=lat, fill=diff),  size=3, pch=21) +
+ ylab("Latitude") + xlab("Longitude")  + scale_fill_gradient(low = "red",  high = "yellow", na.value = NA)
+mp
+
+
+
+

@@ -16,3 +16,32 @@ Check for difference in cities between SSP -  sort by change in predicted occurr
 
 Plot the change with latitude
 
+
+### meeting with Scott
+
+Ridge line vs. density plot
+Whether to include the area of species
+Have a threshold for removing species below a certain probability of occurrence
+
+
+Shifting baseline syndrome
+
+## Create map
+
+Fig 1
+Heatmap - NA with effected
+Multi pane with bars for each species gains vs losses
+
+Fig 2
+Multi-panel plot, each phylum sub-separated by order in the plot (ridge plot?)
+
+Fig 3.
+Mean change in species (per phylum) vs. populations size, footprint, and 
+
+Supplement table
+
+Every species model output
+Every species present in
+Shiny App?
+
+Supplement figure for methods
