@@ -113,3 +113,23 @@ futureClimate <- do.call(rbind, allScenarios)
 futureClimate <- futureClimate %>% dplyr::select(-ID)
 
 write.csv(futureClimate, "data//futureClimate//futureClimate.csv", row.names=FALSE)
+
+
+
+
+### Create a csv for current city climate
+cityPoints
+
+## Load Climate
+climateFiles <- list.files("data//climate//", full.names = T)
+climateRasters <- stack(climateFiles) ## Drop MAR with missing values
+names(climateRasters) <- paste0("bio",1:19)
+climateRasters <- climateRasters[[c("bio1","bio3","bio4","bio5","bio6","bio12","bio13","bio14","bio15")]]
+climateRasters <- climateRasters %>% crop(., NApoly) %>% mask(., NApoly) ## load sampling grid
+
+
+currentClimate <- extract(climateRasters, cityPoints, df=T)
+cityClimate <- cbind(currentClimate, City = as.character(cityPoints@data[,1])) ## join city name
+cityClimate <- cityClimate[!is.na(cityClimate[,2]),] ## drop missing values
+
+write.csv(cityClimate, "data//currentCityClimate.csv", row.names=FALSE)

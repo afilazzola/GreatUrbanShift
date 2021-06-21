@@ -1,5 +1,9 @@
 ###### SDM modelling
 
+## set system varaibles
+Sys.setenv(NOAWT=TRUE) ## Specify no user input, to get around Headless exception error
+options(java.parameters = "-Xmx2g") ## increase memory available for java. 
+
 ## Libraries
 library(dplyr)
 library(tidyr)
@@ -8,7 +12,6 @@ library(rgdal)
 library(dismo)
 library(rgeos)
 library(rJava)
-options(java.parameters = "-Xmx1024m")
 
 ## Set WD
 setwd("~/projects/def-sapna/afila/GreatUrbanShift")
@@ -57,6 +60,7 @@ gridThinning[!is.na(gridThinning)] <- 0
           
 ## Load occurrences
 spLoad <- read.csv(speciesFilepath, stringsAsFactors = F)
+print(basename(speciesFilepath)) ## export species filepath to export file
 
 ## Get species info
 speciesInfo <- sppList[sppList$species %in% unique(spLoad$species),] %>% dplyr::select(-city) %>% data.frame()
@@ -73,6 +77,10 @@ proj4string(sp1) <- CRS("+proj=longlat +datum=WGS84")
 
 ## list species name
 speciesName <- basename(speciesFilepath) %>% gsub(".csv", "", .)
+
+## Set temporary raster directory
+dir.create(file.path("~/scratch/temp",speciesName), showWarnings = FALSE)
+rasterOptions(tmpdir = file.path("~/scratch/temp",speciesName))
 
 ## Generate sample area for background points
 samplearea <- raster::buffer(sp1, width=100000, dissolve=T) ## 100 km buffer

@@ -6,15 +6,15 @@ library(tidyverse)
 library(rgdal)
 
 ## Load city polygons
-canadaCity <- readOGR("data//cityData//CanadaMajorCities//CanadaMajorCities.shp", stringsAsFactors = F)
-USACity <- readOGR("data//cityData//USAMajorCities//USA_Major_Cities.shp", stringsAsFactors = F) ## https://hub.arcgis.com/datasets/esri::usa-major-cities/about
+canadaCity <- readOGR("data//cityData//CanadaMajorCities//CanadaMajorCities.shp")
+USACity <- readOGR("data//cityData//USAMajorCities//USA_Major_Cities.shp")
 
 ## Select cities with at least 500,000 people
 USAtop <- subset(USACity, POPULATION > 400000) ## USA
 canadalist <- c("Toronto","Montréal","Vancouver","Calgary","Ottawa - Gatineau","Edmonton",
                 "Winnipeg","Québec","Halifax", "Hamilton")
 CanadaTop <- subset(canadaCity, PCNAME %in% canadalist)
-CanadaTop <- maptools::unionSpatialPolygons(CanadaTop, CanadaTop$PCNAME) ## drop duplicate of Ottawa
+CanadaTop <- unionSpatialPolygons(CanadaTop, CanadaTop$PCNAME) ## drop duplicate of Ottawa
 
 
 ## City names combined
@@ -24,15 +24,9 @@ AllCities <- data.frame( CityName = c(USAtop$NAME, names(CanadaTop)),
                          lon = c(coordinates(USAtop)[,1],coordinates(CanadaTop)[,1]),
                          lat = c(coordinates(USAtop)[,2],coordinates(CanadaTop)[,2]))
 
-## Need to add laval and Surrey separately - not included in Canada city Database
-OtherCan <- data.frame(CityName = c("Brampton","Mississauga","Surrey","Laval"),
-                       lon=c(-79.76667,-79.65, -122.84889, -73.75),
-                       lat=c(43.68333,43.6, 49.19, 45.5833))
-AllCities <- rbind(AllCities, OtherCan)
-
 ## Download all the population variables for cities
 AllCities[,2:3]  <- round(AllCities[,2:3] ,2 ) ## need less specific coordinates to work
-write.csv(AllCities, "data//CityList.csv", row.names=FALSE)
+
 
 lapply(1:nrow(AllCities), function(i){
 URL <- paste0("https://www.numbeo.com/api/city_pollution?api_key=gvwemy27fipv0e&query=",AllCities[i,3],",",AllCities[i,2])
@@ -48,7 +42,6 @@ table
               
 ## Pollution Data
 pollution <- do.call(plyr::rbind.fill, cityOut)
-pollution[,"City"] <- AllCities$CityName
 write.csv(pollution, "data//cityData//pollutionData.csv", row.names = F)
 
 
