@@ -122,35 +122,39 @@ selectVars <-  colin@results$Variables
 bestClim <- climateRasters[[selectVars]]
 
 
-## Select bias weighting for random forest
-
-tuneArgs <- list(fc = c("L", "Q", "P", "LQ", "HQ", "QPH", "QPHT", "LQHP"), 
+## Select feature classes and regularization parameters for Maxent
+tuneArgs <- list(fc = c("L", "Q", "P", "LQ","H","LQH","LQHP"), 
                   rm = seq(0.5, 3, 0.5))
 
-test <- data.frame(occtrain.p)
-names(test) <- c("x","y")
+## Specify training dataset
+trainDF <- data.frame(occtrain.p)
+names(trainDF) <- c("x","y")
 
-max1 <- ENMeval::ENMevaluate(occ=test, envs = bestClim, bg = data.frame(occtrain.a),
-                    tune.args = tuneArgs, taxon.name=speciesName, 
-                    progbar=F, partitions = 'none', 
+### Run MaxEnt
+max1 <- ENMeval::ENMevaluate(occ=trainDF, envs = bestClim, bg = data.frame(occtrain.a),
+                    tune.args = tuneArgs, 
+                    taxon.name=speciesName, ## add species name
+                    progbar=F, 
+                    partitions = 'none',  ## fully withheld for better model optimization https://jamiemkass.github.io/ENMeval/articles/ENMeval-2.0.0-vignette.html#user
+                    quiet=T, ## silence messages but not errors
+                    doClamp=F, ## remove clamping criteria which is not necessary unless extrapolating
                     algorithm='maxent.jar')
 
 ## best model
-bestMax <- which(max1@results$AICc==min(max1@results$AICc))[1]
+bestMax <- which(max1@results$delta.AICc==0)[1]
 modelOut <- max1@results[bestMax,]
-varImp <- ENMeval::var.importance(max1@models[[bestMax]])
+varImp <- max1@variable.importance[bestMax] %>% data.frame()
+names(varImp) <- c("variable","percent.contribution","permutation.importance")
 
 ## evaluate
 erf <- evaluate(occtest.p, occtest.a, max1@models[[bestMax]], bestClim)
 
-##  Generate SDM meta-data file
-## https://onlinelibrary.wiley.com/doi/abs/10.1111/geb.12993
-## https://onlinelibrary.wiley.com/doi/full/10.1111/ecog.04960
-rmm <- eval.rmm(bestMax)
-# We can fill in the model selection rules based on the sequential criteria we chose.
-rmm$model$selectionRules <- "lowest AICc, break ties with AUC" ## selection criteria for model
-rmm$model$finalModelSettings <- paste0(modelOut[1,"features"], modelOut[1,"rm"]) ## Best featureclass and RM
-rangeModelMetadata::rmmToCSV(rmm, paste0("out//speciesDistro//RMM",speciesName,".csv")) ## export to CSV
+## Compare against null model
+modNull <- ENMeval::ENMnulls(max1, 
+                             mod.settings = list(fc = as.character(modelOut[1,"fc"]), rm =  as.numeric(modelOut[1,"rm"])), 
+                             no.iter = 100)
+nullOut <- ENMeval::null.emp.results(modNull)
+
 
 ## predict species
 CurrentcityClimate[,"speciesOcc"] <- predict(max1@models[[bestMax]], CurrentcityClimate,  type="logistic")
@@ -176,8 +180,10 @@ modelData[,"TNR"] <- mean(erf@TNR) ## True negative rate
 modelData[,"importantVars"] <- paste0(varImp$variable, collapse=";")
 modelData[,"importantValue"] <- paste0(varImp$permutation.importance, collapse=";")
 modelData[,"percentContribution"] <- paste0(varImp$percent.contribution, collapse=";")
-modelData[,"Features"] <- as.character(modelOut[1,"features"])
+modelData[,"Features"] <- as.character(modelOut[1,"fc"])
 modelData[,"Regularization"] <- as.character(modelOut[1,"rm"])
+modelData[,"AUCnull"] <- nullOut[1, "auc.train"]
+modelData[,"AUCDiffpval"] <- nullOut[6, "auc.train"]
 
 
 ## save files
@@ -198,4 +204,19 @@ write.csv(modelData, paste0("out//models//Model",speciesName,".csv"), row.names=
       
 
 
-
+      
+##  Generate SDM meta-data file
+## https://onlinelibrary.wiley.com/doi/abs/10.1111/geb.12993
+## https://onlinelibrary.wiley.com/doi/full/10.1111/ecog.04960
+rmm <-  ENMeval::eval.rmm(max1)
+## specify missing parameters
+rmm$authorship$rmmName  <- paste0("CUEFilazzolaAlessandro_2021_Maxent",speciesName)
+rmm$authorship$license  <- "CC BY-NC"
+rmm$data$occurrence$yearMin  <- "2000"
+rmm$data$occurrence$yearMax  <- "2021"
+rmm$model$selectionRules <- "lowest AICc, break ties with AUC" ## selection criteria for model
+rmm$model$finalModelSettings <- paste0(modelOut[1,"features"], modelOut[1,"rm"]) ## Best featureclass and RM
+rmm$code$software$platform <- toBibtex(citation())
+## save meta-data
+rangeModelMetadata::rmmToCSV(rmm, filename=paste0("out//speciesDistro//RMM",speciesName,".csv")) ## export to CSV
+      

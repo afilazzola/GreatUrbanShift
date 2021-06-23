@@ -14,7 +14,8 @@ setwd("~/projects/def-sapna/afila/GreatUrbanShift")
 masterList <- read.csv("data//cityData//masterSpeciesList.csv", stringsAsFactors = F)
 
 ### bounding box polygon for North America
-NApolyBB <- "POLYGON((-160 0,-160 65,-50 65,-50 0,-160 0))"
+# NApolyBB <- "POLYGON((-160 0,-160 65,-50 65,-50 0,-160 0))"
+NApolyBB <- "POLYGON((-160 0,-50 0, -50 65,-160 65,-160 0))" ## they expect counter-clockwise
 
 ## Load species that have already been downloaded
 currentDL <- list.files("data//speciesOcc//")
@@ -105,7 +106,7 @@ df <- occ_download_import(z)
 iterStart <- seq(1, nrow(masterList), by=200)
 iterEnd <- c(seq(200, nrow(masterList), by=200), nrow(masterList))
 
-gbifKeyList <- lapply(4:6, function(i) {
+gbifKeyList <- lapply(10:12, function(i) {
 speciesSelect <- seq(iterStart[i], iterEnd[i], by=1)
 subsetList <- masterList[speciesSelect,]
 
@@ -136,15 +137,21 @@ lapply(1:3,  function(i) {
 
 
 ### Look up species that are missing
-acceptedSpecies1 <- list.files("data//scratch//speciesUnnested") %>% gsub(".csv", "", .) ## from bulk download
-acceptedSpecies2 <- list.files("data//scratch//speciesSingletons") %>% gsub(".csv", "", .) ## from single downloads
-acceptedSpecies <- c(acceptedSpecies1,acceptedSpecies2)
+missing <- read.csv("data//FixSpecies.csv")
+missingSpecies <- masterList[masterList$species %in% missing$species,]
 
-missingSpecies <- masterList[!masterList$species %in% acceptedSpecies,]
+currentProcessed <- list.files("data//scratch//speciesRemaining//")
+if(length(currentProcessed) > 0){  ## if downloaded species exist, skip those species
+  currentProcessed <- currentProcessed %>% basename() %>%  gsub(".csv", "", . )  ## create a list of species already processed
+  missingSpecies <- missingSpecies %>% filter(!(species %in% currentProcessed)) ## drop those species
+} else { ## if no species exist, just use the regular species list
+  missingSpecies <- missingSpecies 
+}
 
 
-iterStart <- seq(1, nrow(missingSpecies), by=220)
-iterEnd <- c(seq(220, nrow(missingSpecies), by=220), nrow(missingSpecies))
+
+iterStart <- c(1,101,201)
+iterEnd <- c(100,200,304)
 
 gbifKeyList <- lapply(1:3, function(i) {
   speciesSelect <- seq(iterStart[i], iterEnd[i], by=1)
@@ -166,9 +173,8 @@ gbifKeyList <- lapply(1:3, function(i) {
 
 
 
-
 ### Download remaining species on at a time
-for(i in 118:length(missingSpecies$taxonKeys)) {
+for(i in 1:length(missingSpecies$taxonKeys)) {
   tryCatch({ ## catch species where download fails
 sampleSpp <- occ_search(taxonKey = missingSpecies[i,"taxonKeys"],  hasCoordinate=T,   ## select plants, in Canada, with coordinates
                         fields = c("scientificName","acceptedScientificName","decimalLatitude","decimalLongitude","eventDate","verbatimEventDate","year","month","day","genus","species","kingdom","datasetKey"),
@@ -176,7 +182,7 @@ sampleSpp <- occ_search(taxonKey = missingSpecies[i,"taxonKeys"],  hasCoordinate
                         geometry=NApolyBB,
                         hasGeospatialIssue=FALSE) ## specify for area around GTA - WKT polygon counter clockwise
 sampleSpp <- data.frame(sampleSpp$data) ## convert to DF
-write.csv(sampleSpp, paste0("data//scratch//speciesSingletons//",missingSpecies[i,"species"],".csv"), row.names=FALSE)
+write.csv(sampleSpp, paste0("data//scratch//speciesRemaining//",missingSpecies[i,"species"],".csv"), row.names=FALSE)
 print(paste0("Progress ", round(i / nrow(missingSpecies),3)*100," %"))}, error=function(e) print(paste0(missingSpecies[i,"species"], " Failed")))
 }
 
@@ -185,7 +191,7 @@ masterListUpdated <- masterList
 masterListUpdated <- masterListUpdated %>% dplyr::select(-kingdom, -phylum, -class) ## drop old phylogeny columns
 masterListUpdated <- masterListUpdated %>% filter(! taxonKeys %in% missingSpecies$taxonKeys) ## drop species unable to download
 
-for(i in 1548:nrow(masterList)) {
+for(i in 1:nrow(masterList)) {
 speciesInfo <- name_usage(key=masterList[i,"taxonKeys"])$data %>% data.frame()
 ### Check to make sure all columns are present
 speciesInfo <- speciesInfo %>% mutate(class = ifelse("class" %in% names(.), class, NA),order = ifelse("order" %in% names(.), order, NA))

@@ -30,7 +30,6 @@ allCurrent <- do.call(rbind, listCurrent)
 
 
 
-ggplot(allCurrent, aes(x=species, y= meanProb)) + geom_boxplot() +coord_flip()
 
 ## compare change
 allClimate <- allCurrent %>% dplyr::select(City, species, currentProb = meanProb) %>% left_join(allFuture) %>% 
@@ -38,6 +37,7 @@ allClimate <- allCurrent %>% dplyr::select(City, species, currentProb = meanProb
 
 ## Drop occurrences with extremely low probability
 allClimate <- allClimate %>% filter(meanProb <0.05)
+allClimate %>% group_by(SSP, Year, City) %>% summarize(richness= length(unique(species))) %>% data.frame()
 
 ## Differences in species
 ggplot(allClimate, aes(x=species, y= changeProb, fill=Year)) + geom_boxplot() + coord_flip() +
