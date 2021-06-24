@@ -10,7 +10,7 @@
 #SBATCH --job-name=SDMurban
 #SBATCH --error=SDMurban.%J_%a.stdout
 #SBATCH --output=SDMurban.%J_%a.stderr
-#SBATCH --array=0-3
+#SBATCH --array=0-200
 
 parallel --record-env
 
@@ -25,13 +25,13 @@ module load grass
 # export R_LIBS=( ~/R/x86_64-pc-linux-gnu-library/4.0)
 export _JAVA_OPTIONS="-Xms256m -Xmx2g" ## specify memory heap for Java environment
 
-IDX=$((SLURM_ARRAY_TASK_ID))
+IDX=$(( SLURM_ARRAY_TASK_ID))
 
 ## list remaining files to process files to process
 # declare -a speciespaths=( ~/projects/def-sapna/afila/GreatUrbanShift/data/speciesOcc/*.csv ) ## full list
 speciespaths=($(grep -v -f ~/projects/def-sapna/afila/GreatUrbanShift/out/New.txt ~/projects/def-sapna/afila/GreatUrbanShift/out/AllSpeciesFiles.txt)) ## remaining list
 
-TO_PROC=${speciespaths[@] :${IDX}:}
+TO_PROC=${speciespaths[@] :${IDX}:1}
 
 ## Run parallel 
-srun Rscript ~/projects/def-sapna/afila/GreatUrbanShift/scripts/SDMmodellingMulti.R ${TO_PROC}
+Rscript ~/projects/def-sapna/afila/GreatUrbanShift/scripts/SDMmodellingMulti.R ${TO_PROC}

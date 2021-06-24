@@ -9,6 +9,7 @@ library(dismo)
 library(rgeos)
 library(rJava)
 library(rangeModelMetadata)
+library(doParallel)
 
 ## Set WD
 setwd("~/projects/def-sapna/afila/GreatUrbanShift")
@@ -57,6 +58,7 @@ gridThinning[!is.na(gridThinning)] <- 0
           
 ## Load occurrences
 spLoad <- read.csv(speciesFilepath, stringsAsFactors = F)
+spLoad <- spLoad[!is.na(spLoad$decimalLongitude),] ## drop NAs
 print(basename(speciesFilepath)) ## export species filepath to export file
 
 ## Get species info
@@ -125,6 +127,12 @@ tuneArgs <- list(fc = c("L", "Q", "P", "LQ","H","LQH","LQHP"),
 ## Specify training dataset
 trainDF <- data.frame(occtrain.p)
 names(trainDF) <- c("x","y")
+
+## Register do parallel
+cl <- makeCluster(5, type="FORK")
+clusterExport(cl, varlist=list("trainDF","bestClim","occtrain.a","tuneArgs","speciesName"),
+              envir = environment())
+registerDoParallel(cl)
 
 ### Run MaxEnt
 max1 <- ENMeval::ENMevaluate(occ=trainDF, envs = bestClim, bg = data.frame(occtrain.a),
