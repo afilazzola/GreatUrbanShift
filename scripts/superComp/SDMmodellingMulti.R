@@ -134,7 +134,8 @@ max1 <- ENMeval::ENMevaluate(occ=trainDF, envs = bestClim, bg = data.frame(occtr
                     partitions = 'none',  ## fully withheld for better model optimization https://jamiemkass.github.io/ENMeval/articles/ENMeval-2.0.0-vignette.html#user
                     quiet=T, ## silence messages but not errors
                     doClamp=F, ## remove clamping criteria which is not necessary unless extrapolating
-                    algorithm='maxent.jar')
+                    algorithm='maxent.jar', parallel=T, numCores=5)
+                    
 
 ## best model
 bestMax <- which(max1@results$delta.AICc==0)[1]
