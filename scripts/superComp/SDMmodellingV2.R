@@ -57,6 +57,7 @@ gridThinning[!is.na(gridThinning)] <- 0
           
 ## Load occurrences
 spLoad <- read.csv(speciesFilepath, stringsAsFactors = F)
+spLoad <- spLoad[!is.na(spLoad$decimalLongitude),] ## drop NA observations
 print(basename(speciesFilepath)) ## export species filepath to export file
 
 ## Get species info
@@ -145,11 +146,11 @@ names(varImp) <- c("variable","percent.contribution","permutation.importance")
 ## evaluate
 erf <- evaluate(occtest.p, occtest.a, max1@models[[bestMax]], bestClim)
 
-## Compare against null model
-modNull <- ENMeval::ENMnulls(max1, 
-                             mod.settings = list(fc = as.character(modelOut[1,"fc"]), rm =  as.numeric(modelOut[1,"rm"])), 
-                             no.iter = 100)
-nullOut <- ENMeval::null.emp.results(modNull)
+# ## Compare against null model
+# modNull <- ENMeval::ENMnulls(max1, 
+#                              mod.settings = list(fc = as.character(modelOut[1,"fc"]), rm =  as.numeric(modelOut[1,"rm"])), 
+#                              no.iter = 100)
+# nullOut <- ENMeval::null.emp.results(modNull)
 
 
 ## predict species
@@ -165,7 +166,7 @@ write.csv(citySummary, paste0("out//cityPredict//CurrentClimate",speciesName,".c
 ## create output dataframe
 modelData <- speciesInfo 
 modelData[,"fileName"] <- basename(speciesFilepath)
-modelData[,"AUC"] <- erf@auc ## AUC value
+modelData[,"AUCtest"] <- erf@auc ## AUC value
 modelData[,"nobs"] <- nrow(spLoad) ## number of presence points used overall
 modelData[,"nthin"] <- nrow(sp1) ## number of presence points used after thinned
 modelData[,"np"] <- erf@np ## number of presence points used for evaluation
@@ -178,8 +179,7 @@ modelData[,"importantValue"] <- paste0(varImp$permutation.importance, collapse="
 modelData[,"percentContribution"] <- paste0(varImp$percent.contribution, collapse=";")
 modelData[,"Features"] <- as.character(modelOut[1,"fc"])
 modelData[,"Regularization"] <- as.character(modelOut[1,"rm"])
-modelData[,"AUCnull"] <- nullOut[1, "auc.train"]
-modelData[,"AUCDiffpval"] <- nullOut[6, "auc.train"]
+modelData[,"AUCtrain"] <- as.character(modelOut[1,"auc.train"])
 
 
 ## save files

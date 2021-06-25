@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --account=def-sapna # specify account
 #SBATCH --time=02:59:00      # time for operation to run 
-#SBATCH --mem-per-cpu=4G    ## specify memory for operation
-#SBATCH --cpus-per-task=6   # Specify processors
+#SBATCH --mem-per-cpu=10G    ## specify memory for operation
+#SBATCH --cpus-per-task=1   # Specify processors
 #SBATCH --mail-user=alex.filazzola@outlook.com   ## specify email for notification
 #SBATCH --mail-type=BEGIN
 #SBATCH --mail-type=END
@@ -10,7 +10,7 @@
 #SBATCH --job-name=SDMurban
 #SBATCH --error=SDMurban.%J_%a.stdout
 #SBATCH --output=SDMurban.%J_%a.stderr
-#SBATCH --array=0-200
+#SBATCH --array=0-3
 
 parallel --record-env
 
@@ -34,4 +34,4 @@ speciespaths=($(grep -v -f ~/projects/def-sapna/afila/GreatUrbanShift/out/New.tx
 TO_PROC=${speciespaths[@] :${IDX}:1}
 
 ## Run parallel 
-Rscript ~/projects/def-sapna/afila/GreatUrbanShift/scripts/SDMmodellingMulti.R ${TO_PROC}
+Rscript ~/projects/def-sapna/afila/GreatUrbanShift/scripts/SDMmodellingV2.R ${TO_PROC}
