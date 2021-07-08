@@ -92,15 +92,15 @@ averageCity <- modelClimateCity %>% filter(!is.infinite(changeProb)) %>%
 
 ## Take extreme year and discrete extremes
 averageExtreme <- data.frame(averageCity) %>% filter(Year=="2081-2100")
-averageExtreme[,"diffBin"] <- cut(averageExtreme$diff, breaks=c(1,0,-1,-2,-3))
+averageExtreme[,"diffBin"] <- cut(averageExtreme$diff, breaks=c(0,-1,-2,-3,-4))
 
 mp <- NULL
 mapWorld <- borders("world", colour="white", fill="gray75") # create a layer of borders
 mp <- ggplot() + theme_classic()+  mapWorld + xlim(-180,-30) + ylim(-20, 90)
-RColorBrewer::brewer.pal(n=8, "YlOrRd")
+RColorBrewer::brewer.pal(n=4, "YlOrRd")
 
 mp <- mp+ geom_point(data=averageExtreme , aes(x=lon, y=lat, fill=diffBin),  size=3, pch=21) +
- ylab("Latitude") + xlab("Longitude")  + scale_fill_manual(values=rev(c("#AED6F1", "#FFEDA0","#FEB24C","#B10026")))
+ ylab("Latitude") + xlab("Longitude")  + scale_fill_manual(values=rev(c(RColorBrewer::brewer.pal(n=4, "YlOrRd"))))
 mp
 
 ### Average across models and timeframes
@@ -149,7 +149,7 @@ IUCNclimate <- merge(allClimate, IUCNList)
 
 IUCNsummary <- IUCNclimate %>% group_by(Year, SSP, redlistCategory) %>% filter(!is.infinite(changeProb)) %>% 
   filter(!is.na(redlistCategory)) %>% 
-    summarize(diffProb = mean(changeProb, na.rm=T)) %>% arrange(diffProb) %>% 
+    summarize(diffProb = mean(changeProb, na.rm=T), n=length(unique(species))) %>% arrange(diffProb) %>% 
   data.frame()
 
 IUCNsummary$redlistCategory <- factor(IUCNsummary$redlistCategory, 
