@@ -45,3 +45,16 @@ Every species present in
 Shiny App?
 
 Supplement figure for methods
+
+
+
+
+### Scott Comments
+
+I think in the introduction as well (or maybe the methods?) we need to reflect on the fact we are omitting a significant driver of species turnover = urbanization (as a rate through time). Some cities grow (e.g. out or up, pop density, etc) others shrink (urban cover remains but density declines, etc). These, over a 50-100 period, lead to changes. Even things like building trends (brick to metal siding) have been linked to decline in common sparrows in European cities.
+
+I think we need to somehow illustrate we have assumptions about other anthropogenic factors, some of which will depend on governance, development, natural disasters, economics, who knows..that will define how the city grows. This will have impacts on species turnover certainly.
+
+Isoclines? If precipitation is idiosyncratic (I remember ffrom last discussion) this could be nice way to ‘group’ mean change in occurrence probability. Any spatial autocorrelation in these data? We should talk more about lat/long trends, clustering and bioregion.
+
+
