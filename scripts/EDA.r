@@ -44,7 +44,7 @@ allCurrent <- do.call(rbind, listCurrent)
 
 ## Combine future and current climate data frames
 allClimate <- allCurrent %>% dplyr::select(City, species, currentProb = meanProb) %>% left_join(allFuture) %>% 
-  mutate(changeProb =  log(meanProb/currentProb), changeProb= round(changeProb, 4)) %>%  ## log(future/current) = LRR change in predicted occurrence
+  mutate(changeProb =  meanProb - currentProb, changeProb= round(changeProb, 4)) %>%  ## log(future/current) = LRR change in predicted occurrence
   filter(!is.na(SSP)) %>% filter(currentProb > 0.05)
 allClimate <- allClimate %>% filter(species %in% bestModels$species) ## remove species that had low model AUC
 
@@ -92,15 +92,15 @@ averageCity <- modelClimateCity %>% filter(!is.infinite(changeProb)) %>%
 
 ## Take extreme year and discrete extremes
 averageExtreme <- data.frame(averageCity) %>% filter(Year=="2081-2100")
-averageExtreme[,"diffBin"] <- cut(averageExtreme$diff, breaks=c(0,-1,-2,-3,-4))
+averageExtreme[,"diffBin"] <- cut(averageExtreme$diff, breaks=seq(-0.5,0.2, by=0.1))
 
 mp <- NULL
 mapWorld <- borders("world", colour="white", fill="gray75") # create a layer of borders
 mp <- ggplot() + theme_classic()+  mapWorld + xlim(-180,-30) + ylim(-20, 90)
-RColorBrewer::brewer.pal(n=4, "YlOrRd")
+RColorBrewer::brewer.pal(n=7, "RdYlBu")
 
 mp <- mp+ geom_point(data=averageExtreme , aes(x=lon, y=lat, fill=diffBin),  size=3, pch=21) +
- ylab("Latitude") + xlab("Longitude")  + scale_fill_manual(values=rev(c(RColorBrewer::brewer.pal(n=4, "YlOrRd"))))
+ ylab("Latitude") + xlab("Longitude")  + scale_fill_manual(values=c(RColorBrewer::brewer.pal(n=9, "RdYlBu")))
 mp
 
 ### Average across models and timeframes
@@ -108,7 +108,6 @@ ggplot(allClimate, aes(y=SSP, x=changeProb, fill=Year)) + geom_density_ridges(na
   theme_classic() + xlab("Change in Predicted Occurrence") + scale_fill_manual(values=c("#E69F00","#56B4E9")) +
   geom_hline(yintercept=0, lty=2) + geom_vline(xintercept = 0, lty=2) + ylab("") +
   scale_y_discrete(limits = rev(levels(allClimate$SSP)))
-
 
 
 ##### Taxa plot
@@ -121,6 +120,33 @@ taxaClimateSimplified <- taxaClimate %>% filter(!(Phylum=="Platyhelminthes" | Ph
   filter(Year == "2081-2100" & SSP == "ssp585") 
 taxaClimateSimplified <- taxaClimateSimplified %>% group_by(Order) %>% mutate(medianOrder = median(changeProb, na.rm=T), nOrder=length(changeProb)) %>% 
   ungroup()  %>%  group_by(Class) %>% mutate(medianClass = median(changeProb, na.rm=T), nClass=length(changeProb)) 
+
+
+## Simple phylum plot
+ggplot(taxaClimateSimplified %>%
+      filter(Phylum %in% c("Arthropoda","Chordata")) %>% 
+      filter(!(Class %in% c("Actinopterygii","Ascidiacea","Elasmobranchii","Merostomata","Malacostraca","Maxillopoda"))), 
+      aes(y=Class, x= changeProb, fill=Class)) + 
+  geom_density_ridges2(scale = 0.9) +
+  theme_classic() + xlab("Difference in Predicted Occurrence") +
+  geom_hline(yintercept=0, lty=2) + facet_wrap(Phylum~., scales = "free_y") +
+  scale_fill_manual(values=c(RColorBrewer::brewer.pal(n=12, "Paired"), "black")) +
+  geom_vline(xintercept = 0, lty=2)  + theme(text = element_text(size=24), legend.position = "none")
+
+## N per grouping
+taxaClimateSimplified %>%
+  filter(Phylum %in% c("Arthropoda","Chordata")) %>% 
+  filter(!(Class %in% c("Actinopterygii","Ascidiacea","Elasmobranchii","Merostomata","Malacostraca","Maxillopoda"))) %>%
+  group_by(Class) %>% summarize(nSpp = length(unique(species)), nObs=length(species), nCityObs = nObs/nSpp)
+
+
+### Extremes among taxa
+extremePatterns <- taxaClimateSimplified %>%
+  filter(Phylum %in% c("Arthropoda","Chordata")) %>% 
+  filter(!(Class %in% c("Actinopterygii","Ascidiacea","Elasmobranchii","Merostomata","Malacostraca","Maxillopoda"))) %>%
+  group_by(Class, Order) %>% 
+  summarize(avgChangeProb = mean(changeProb))
+# write.csv(extremePatterns, "extremePatterns.csv", row.names=F)
 
 ### Complex phylum
 ggplot(taxaClimateSimplified %>% filter(Phylum %in% c("Arthropoda","Chordata"))  , aes(y=reorder(Order, medianOrder), x= changeProb, fill=Class)) + 
