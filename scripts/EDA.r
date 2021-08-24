@@ -12,10 +12,7 @@ listModels <- lapply(1:length(models), function(i)
 )
 allModels <- do.call(plyr::rbind.fill, listModels)
 
-### Total number of observations
-sum(allModels$nobs)/1000000 ## total number of observations
-mean(allModels$nobs) ## average number of observations per species
-sd(allModels$nobs)/sqrt(nrow(allModels)) ## Error
+
 
 ### Model checks to ensure none are poor qualifiers
 hist(allModels$AUCtrain)
@@ -43,6 +40,13 @@ terrestrial2 <- bestModels %>%
   filter(!(Family %in% c("Neritopsidae","Titiscaniidae","Neritidae","Phenacolepadidae")))
 terrestrial <- rbind(terrestrial1, terrestrial2)
 
+### Total number of observations
+sum(terrestrial$nobs)/1000000 ## total number of observations
+median(terrestrial$nobs) ## average number of observations per species
+sd(terrestrial$nobs)/sqrt(nrow(terrestrial)) ## Error
+min(terrestrial$nobs)
+max(terrestrial$nobs)
+
 ## Look at predictions for cities
 futureclimate <- list.files("out//cityPredict//", full.names = T, pattern="Future")
 
@@ -65,27 +69,6 @@ allClimate <- allCurrent %>% dplyr::select(City, species, currentProb = meanProb
   mutate(changeProb =  meanProb - currentProb, changeProb= round(changeProb, 4)) %>%  ## log(future/current) = LRR change in predicted occurrence
   filter(!is.na(SSP)) %>% filter(currentProb > 0.05)
 allClimate <- allClimate %>% filter(species %in% terrestrial$species) ## remove species that had low model AUC
-
-
-## Calculate species richness per 
-meanRichness <- allClimate %>% group_by(SSP, Year, City) %>% 
-  summarize(currentRichness = sum(currentProb >0.05), futureRichness = sum(meanProb >0.05)) %>% 
-  mutate(diffRichness = (futureRichness - currentRichness)/currentRichness) %>% 
-  data.frame() 
-
-
-## plot the patterns in richness
-ggplot(meanRichness %>% filter(SSP=="ssp126" & Year=="2041-2060"), aes(x=City, y=currentRichness, fill=City)) + 
-  geom_bar(stat="identity") + 
-  theme_classic() + coord_flip() + ylab("Number of species predicted to occur") + scale_fill_manual(values=rep(c("#E69F00", "#56B4E9"),30)) +
-  theme(legend.position = "none") + xlab("")
-
-
-## plot the change in richness for the future
-ggplot(meanRichness , aes(x=City, y=diffRichness*100, fill=Year)) + 
-  geom_bar(stat="identity", position="dodge2") + facet_grid(~SSP) + 
-  theme_classic() + coord_flip() + ylab("Percent change in species richness") + scale_fill_manual(values=rep(c("#E69F00", "#56B4E9"),30)) +
-  theme(legend.position = "top") + xlab("")
 
 
 ####### Define regions for cities that are most affected
@@ -156,8 +139,8 @@ taxaClimateSimplified %>%
 
 ### Extremes among taxa
 extremePatterns <- taxaClimateSimplified %>%
-  filter(Class == "Clitellata") %>% 
-  group_by(Class, Order, Family) %>% 
+  filter(Class == "Mammalia") %>% 
+  group_by(species) %>% 
   summarize(avgChangeProb = mean(changeProb), nSpp = length(unique(species))) %>% 
   arrange(avgChangeProb) %>% data.frame()
 extremePatterns
@@ -178,6 +161,11 @@ ggplot(taxaClimateSimplified %>% filter(!(Phylum %in% c("Arthropoda","Chordata")
   geom_hline(yintercept=0, lty=2) + 
   geom_vline(xintercept = 0, lty=2) + ylab("")
 
+### Bee declines in Raleigh
+raleigh <- taxaClimateSimplified %>% filter(Order=="Hymenoptera") %>% 
+  # filter(City=="Raleigh") %>%  
+  filter(Family %in% c("Andrenidae","Apidae","Collectidae","Hallictidae","Megachilidae","Melittidae","Stenotritidae")) %>%  ## bee families
+  summarize(avg=mean(changeProb))
 
 
 ##### Analyze IUCN data
@@ -228,3 +216,44 @@ tucson <- taxaClimate %>% filter(City == "Tucson" | City == "Baltimore") %>% fil
 ggplot(tucson, aes(x= changeProb, fill=City)) + geom_density(alpha=0.35)+ 
   scale_fill_manual(values=c("#56B4E9","#E69F00")) + theme_classic() + geom_vline(xintercept=0, lty=2) +
   xlab("Difference in Predicted Occurrence")
+
+
+
+#### Appendix Figures
+
+
+
+#### Richness per city
+
+## Calculate species richness per 
+meanRichness <- allClimate %>% group_by(SSP, Year, City) %>% 
+  summarize(currentRichness = sum(currentProb >0.05), futureRichness = sum(meanProb >0.05)) %>% 
+  mutate(diffRichness = (futureRichness - currentRichness)/currentRichness) %>% 
+  data.frame() 
+
+
+## plot the patterns in richness
+ggplot(meanRichness %>% filter(SSP=="ssp126" & Year=="2041-2060"), aes(x=City, y=currentRichness, fill=City)) + 
+  geom_bar(stat="identity") + 
+  theme_classic() + coord_flip() + ylab("Number of species predicted to occur") + scale_fill_manual(values=rep(c("#E69F00", "#56B4E9"),30)) +
+  theme(legend.position = "none") + xlab("")
+write.csv(meanRichness, "appendix//cityRichness.csv",row.names=FALSE)
+
+## plot the change in richness for the future
+ggplot(meanRichness , aes(x=City, y=diffRichness*100, fill=Year)) + 
+  geom_bar(stat="identity", position="dodge2") + facet_grid(~SSP) + 
+  theme_classic() + coord_flip() + ylab("Percent change in species richness") + scale_fill_manual(values=rep(c("#E69F00", "#56B4E9"),30)) +
+  theme(legend.position = "top") + xlab("")
+
+
+
+#### Biodiversity vs. change in suitability
+extremeRich <- meanRichness %>% filter(SSP=="ssp585" & Year=="2081-2100") 
+extremeRich[,"CityCode"] <- abbreviate(extremeRich$City, 6)
+
+ggplot(extremeRich, aes(x=currentRichness, y= diffRichness*100, label=CityCode)) + 
+  geom_text() +
+  theme_classic() + ylab("Decline in Current Species Richness (%)") +
+  xlab("Current Species Richness")
+
+
