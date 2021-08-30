@@ -70,6 +70,8 @@ allClimate <- allCurrent %>% dplyr::select(City, species, currentProb = meanProb
   filter(!is.na(SSP)) %>% filter(currentProb > 0.05)
 allClimate <- allClimate %>% filter(species %in% terrestrial$species) ## remove species that had low model AUC
 
+## Species unique to single cities
+allClimate %>% group_by(species) %>% summarize(nCity = length(unique(City)), cityName=unique(City)) %>% filter(nCity==1)
 
 ####### Define regions for cities that are most affected
 
@@ -202,21 +204,35 @@ ggplot(IUCNsummary, aes(x=redlistSimplified,y=diffProb, fill=SSP)) +
 
 
 ### Patterns of differences among cities
-meanCity <- taxaClimate %>% group_by(City, Year, SSP ) %>% summarize(avg= mean(abs(changeProb))) %>% data.frame()
+meanCity <- taxaClimate %>% group_by(City, Year, SSP ) %>% summarize(avg= mean(changeProb)) %>% data.frame()
 
 ggplot(meanCity, aes(x=reorder(City,avg), y=avg, color=SSP)) + geom_point(aes(shape=Year), size=2)  + 
-  coord_flip() + theme_classic() + ylab("Mean absolute change across all species") + xlab("") +
-   scale_color_manual(values=c(RColorBrewer::brewer.pal(n=3, "Dark2")))
+  coord_flip() + theme_classic() + ylab("Change in predicted occurrence across all species") + xlab("") +
+   scale_color_manual(values=c(RColorBrewer::brewer.pal(n=3, "Dark2"))) +
+  geom_hline(yintercept=0, lty=2) + ylim(-0.4, 0.2)
 
 
 
-tucson <- taxaClimate %>% filter(City == "Tucson" | City == "Baltimore") %>% filter(SSP=="ssp585" & Year == "2081-2100")
+extremeCities <- taxaClimate %>% filter(City == "Mesa" | City == "San Francisco") %>% filter(SSP=="ssp585" & Year == "2081-2100")
 
 
-ggplot(tucson, aes(x= changeProb, fill=City)) + geom_density(alpha=0.35)+ 
+ggplot(extremeCities, aes(x= changeProb, fill=City)) + geom_density(alpha=0.35)+ 
   scale_fill_manual(values=c("#56B4E9","#E69F00")) + theme_classic() + geom_vline(xintercept=0, lty=2) +
   xlab("Difference in Predicted Occurrence")
 
+
+#### Compare population size with change in occurrence
+cityPop <- read.csv("data//cityPopulation.csv", stringsAsFactors = F)
+popChange <- merge(cityPop, averageExtreme, by="City")
+
+popChange %>% mutate(change=ifelse(diff>0, "gain","loss")) %>% 
+  group_by(change,SSP, Year.y) %>% summarize(totalPop = sum(Population), change=mean(diff))
+
+
+## changes in specific taxa for abstract
+taxaClimateSimplified %>% filter(Class == "Amphibia") %>% summarize(futureDiff = mean(changeProb))
+taxaClimateSimplified %>% filter(Order == "Hemiptera") %>% summarize(futureDiff = mean(changeProb))
+taxaClimateSimplified %>% filter(Order == "Anseriformes") %>% summarize(futureDiff = mean(changeProb))
 
 
 #### Appendix Figures
