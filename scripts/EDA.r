@@ -278,3 +278,13 @@ ggplot(extremeRich, aes(x=currentRichness, y= diffRichness*100, label=CityCode))
   xlab("Current Species Richness")
 
 
+
+### Test for differences among climate models
+
+
+m1 <- glm(changeProb ~ SSP * Year, data= taxaClimate)
+anova(m1, test="Chisq")
+
+## pairwise contrast
+library(emmeans)
+emmeans(m1, pairwise~SSP*Year)
