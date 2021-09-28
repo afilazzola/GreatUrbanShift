@@ -70,6 +70,7 @@ allClimate <- allCurrent %>% dplyr::select(City, species, currentProb = meanProb
   filter(!is.na(SSP)) %>% filter(currentProb > 0.05)
 allClimate <- allClimate %>% filter(species %in% terrestrial$species) ## remove species that had low model AUC
 
+
 ## Species unique to single cities
 allClimate %>% group_by(species) %>% summarize(nCity = length(unique(City)), cityName=unique(City)) %>% filter(nCity==1)
 
@@ -106,17 +107,13 @@ mp <- mp+ geom_point(data=averageExtreme , aes(x=lon, y=lat, fill=diffBin),  siz
  ylab("Latitude") + xlab("Longitude")  + scale_fill_manual(values=c(RColorBrewer::brewer.pal(n=9, "RdYlBu")))
 mp
 
-### Average across models and timeframes
-ggplot(allClimate, aes(y=SSP, x=changeProb, fill=Year)) + geom_density_ridges(na.rm=T, stat="binline", alpha=0.5) + 
-  theme_classic() + xlab("Change in Predicted Occurrence") + scale_fill_manual(values=c("#E69F00","#56B4E9")) +
-  geom_hline(yintercept=0, lty=2) + geom_vline(xintercept = 0, lty=2) + ylab("") +
-  scale_y_discrete(limits = rev(levels(allClimate$SSP)))
 
 
 ##### Taxa plot
 ## Differences in taxa
 taxaInfo <- terrestrial %>% distinct(Phylum, Class, Order, Family, species)
 taxaClimate <- merge(allClimate, taxaInfo, by="species" )
+# write.csv(taxaClimate, "out//allSpeciesData.csv", row.names=FALSE)
 
 
 taxaClimateSimplified <- taxaClimate %>% 
@@ -148,20 +145,6 @@ extremePatterns <- taxaClimateSimplified %>%
 extremePatterns
 # write.csv(extremePatterns, "extremePatterns.csv", row.names=F)
 
-### Complex phylum
-ggplot(taxaClimateSimplified %>% filter(Phylum %in% c("Arthropoda","Chordata"))  , aes(y=reorder(Order, medianOrder), x= changeProb, fill=Class)) + 
-  geom_density_ridges(stat="binline") + 
-  theme_classic() + xlab("Change in Predicted Occurrence") +
-  geom_hline(yintercept=0, lty=2) + facet_wrap(Phylum~., scales = "free_y") +
-  scale_fill_manual(values=c(RColorBrewer::brewer.pal(n=12, "Paired"), "black")) +
-  geom_vline(xintercept = 0, lty=2) 
-
-### Other  phylum
-ggplot(taxaClimateSimplified %>% filter(!(Phylum %in% c("Arthropoda","Chordata")))  , aes(y=reorder(Class, medianClass), x= changeProb)) + 
-  geom_density_ridges(stat="binline", fill="black", alpha=0.5) + 
-  theme_classic() + xlab("Change in Predicted Occurrence") +
-  geom_hline(yintercept=0, lty=2) + 
-  geom_vline(xintercept = 0, lty=2) + ylab("")
 
 ### Bee declines in Raleigh
 raleigh <- taxaClimateSimplified %>% filter(Order=="Hymenoptera") %>% 
@@ -169,7 +152,19 @@ raleigh <- taxaClimateSimplified %>% filter(Order=="Hymenoptera") %>%
   filter(Family %in% c("Andrenidae","Apidae","Collectidae","Hallictidae","Megachilidae","Melittidae","Stenotritidae")) %>%  ## bee families
   summarize(avg=mean(changeProb))
 
+## Patterns across taxa
+familyAvg <- taxaClimateSimplified %>% filter(Phylum %in% c("Arthropoda","Chordata")) %>%
+  group_by(Class) %>% summarize(avgChange = mean(changeProb), nSpp = length(unique(species))) %>% 
+  arrange(avgChange) %>% data.frame()
+familyAvg
+speciesAvg <- taxaClimateSimplified %>% filter(Phylum %in% c("Arthropoda","Chordata")) %>%
+  group_by(species) %>% summarize(avgChange = mean(changeProb))
 
+
+familyAvg <- taxaClimateSimplified %>%
+  group_by(Class) %>% summarize(avgChange = mean(changeProb), nSpp = length(unique(species))) %>% 
+  arrange(avgChange) %>% data.frame()
+familyAvg
 ##### Analyze IUCN data
 
 IUCNList <- read.csv("data//IUCNspeciesList.csv")
@@ -187,7 +182,16 @@ IUCNsummary <- IUCNclimate %>% group_by(Year, SSP, redlistSimplified) %>% filter
     summarize(diffProb = mean(changeProb, na.rm=T), n=length(unique(species)), error=se(changeProb)) %>% arrange(diffProb) %>% 
   data.frame()
 
-
+## Test if at-risk species more likely to decline
+IUCNmeanSpp <- IUCNclimate %>%
+  filter(SSP == "ssp585" & Year == "2081-2100") %>% 
+  filter(!is.infinite(changeProb)) %>% 
+  filter(!is.na(redlistCategory)) %>% 
+  filter(redlistSimplified != "Data Deficient")  %>% 
+  group_by(species, redlistSimplified) %>% 
+  summarize(diffProb = mean(changeProb, na.rm=T))
+t.test(diffProb ~ redlistSimplified, data=IUCNmeanSpp) 
+  
 # 
 # IUCNsummary$redlistCategory <- factor(IUCNsummary$redlistCategory, 
 #                                       levels=c("Critically Endangered","Endangered","Vulnerable","Near Threatened","Least Concern","Data Deficient"))
@@ -211,16 +215,17 @@ ggplot(meanCity, aes(x=reorder(City,avg), y=avg, color=SSP)) + geom_point(aes(sh
    scale_color_manual(values=c(RColorBrewer::brewer.pal(n=3, "Dark2"))) +
   geom_hline(yintercept=0, lty=2) + ylim(-0.4, 0.2)
 
-
-
+## Extreme cities
 extremeCities <- taxaClimate %>% filter(City == "Mesa" | City == "San Francisco") %>% filter(SSP=="ssp585" & Year == "2081-2100")
 
 
 ggplot(extremeCities, aes(x= changeProb, fill=City)) + geom_density(alpha=0.35)+ 
   scale_fill_manual(values=c("#56B4E9","#E69F00")) + theme_classic() + geom_vline(xintercept=0, lty=2) +
-  xlab("Difference in Predicted Occurrence")
+  xlab("Difference in Predicted Occurrence") + facet_grid(City~.)
 
-
+## Count the different among species
+meanCity %>% filter(SSP=="ssp585" & Year =="2081-2100") %>% summarize(netNeg = sum(avg<0)/nrow(.))
+ 
 #### Compare population size with change in occurrence
 cityPop <- read.csv("data//cityPopulation.csv", stringsAsFactors = F)
 popChange <- merge(cityPop, averageExtreme, by="City")
