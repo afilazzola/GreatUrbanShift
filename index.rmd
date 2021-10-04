@@ -1,9 +1,21 @@
+---
+title: "Great Urban Shift"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+![](CodingWorkflow.png)
+
 ### Analyze results
 
+```{r warning=FALSE, message=FALSE}
 ## Libraries
 library(tidyverse)
 library(ggridges)
+```
 
+```{r}
 ## Look at the model results
 models <- list.files("out//models//", full.names = T)
 
@@ -61,17 +73,21 @@ listCurrent <- lapply(1:length(currentclimate), function(i)
   read.csv(currentclimate[i], stringsAsFactors = F)
 )
 allCurrent <- do.call(rbind, listCurrent)
-
+```
 
 
 ## Combine future and current climate data frames
+```{r}
 allClimate <- allCurrent %>% dplyr::select(City, species, currentProb = meanProb) %>% left_join(allFuture) %>% 
   mutate(changeProb =  meanProb - currentProb, changeProb= round(changeProb, 4)) %>%  ## log(future/current) = LRR change in predicted occurrence
   filter(!is.na(SSP)) %>% filter(currentProb > 0.05)
 allClimate <- allClimate %>% filter(species %in% terrestrial$species) ## remove species that had low model AUC
 
+```
+
 
 ## Species unique to single cities
+```{r}
 allClimate %>% group_by(species) %>% summarize(nCity = length(unique(City)), cityName=unique(City)) %>% filter(nCity==1)
 
 ####### Define regions for cities that are most affected
@@ -107,9 +123,12 @@ mp <- mp+ geom_point(data=averageExtreme , aes(x=lon, y=lat, fill=diffBin),  siz
  ylab("Latitude") + xlab("Longitude")  + scale_fill_manual(values=c(RColorBrewer::brewer.pal(n=9, "RdYlBu")))
 mp
 
+```
 
 
-##### Taxa plot
+
+##### Taxa plot to see differences among species
+```{r}
 ## Differences in taxa
 taxaInfo <- terrestrial %>% distinct(Phylum, Class, Order, Family, species)
 taxaClimate <- merge(allClimate, taxaInfo, by="species" )
@@ -165,8 +184,11 @@ familyAvg <- taxaClimateSimplified %>%
   group_by(Class) %>% summarize(avgChange = mean(changeProb), nSpp = length(unique(species))) %>% 
   arrange(avgChange) %>% data.frame()
 familyAvg
-##### Analyze IUCN data
+```
 
+
+##### Analyze IUCN data
+```{r}
 IUCNList <- read.csv("data//IUCNspeciesList.csv")
 
 
@@ -192,22 +214,13 @@ IUCNmeanSpp <- IUCNclimate %>%
   summarize(diffProb = mean(changeProb, na.rm=T))
 t.test(diffProb ~ redlistSimplified, data=IUCNmeanSpp) 
   
-# 
-# IUCNsummary$redlistCategory <- factor(IUCNsummary$redlistCategory, 
-#                                       levels=c("Critically Endangered","Endangered","Vulnerable","Near Threatened","Least Concern","Data Deficient"))
 
 
-ggplot(IUCNsummary, aes(x=redlistSimplified,y=diffProb, fill=SSP)) +
-  geom_bar(stat="identity", position="dodge2") + facet_grid(~Year) +
-   theme_classic() + geom_errorbar(aes(x=redlistSimplified, ymin=diffProb-error, ymax=diffProb+error), position="dodge2", width=1) + 
-  scale_fill_manual(values = c("#E69F00", "#56B4E9")) +
-  geom_hline(yintercept=0, lty=2) +
-  ylab("Change in predicted occurrence (LRR)") + xlab("")
-
-
+```
 
 
 ### Patterns of differences among cities
+```{r}
 meanCity <- taxaClimate %>% group_by(City, Year, SSP ) %>% summarize(avg= mean(changeProb)) %>% data.frame()
 
 ggplot(meanCity, aes(x=reorder(City,avg), y=avg, color=SSP)) + geom_point(aes(shape=Year), size=2)  + 
@@ -238,12 +251,59 @@ popChange %>% mutate(change=ifelse(diff>0, "gain","loss")) %>%
 taxaClimateSimplified %>% filter(Class == "Amphibia") %>% summarize(futureDiff = mean(changeProb))
 taxaClimateSimplified %>% filter(Order == "Hemiptera") %>% summarize(futureDiff = mean(changeProb))
 taxaClimateSimplified %>% filter(Order == "Anseriformes") %>% summarize(futureDiff = mean(changeProb))
+```
+
+
+### Test for differences among climate models
+```{r warning=FALSE, message=FALSE}
+
+m1 <- glm(changeProb ~ SSP * Year, data= taxaClimate)
+anova(m1, test="Chisq")
+
+## pairwise contrast
+library(emmeans)
+emmeans(m1, pairwise~SSP*Year)
+```
+
+
+
+### Compare population vs mean change in city
+```{r}
+pop <- read.csv("data//cityPopulation.csv", stringsAsFactors = F)
+
+
+## Calculate species richness per 
+meanRichness <- allClimate %>% group_by(SSP, Year, City) %>% 
+  summarize(currentRichness = sum(currentProb >0.05), futureRichness = sum(meanProb >0.05)) %>% 
+  mutate(diffRichness = (futureRichness - currentRichness)/currentRichness) %>% 
+  data.frame() 
+
+cityAvgPop <- merge(meanRichness, pop, by="City")
+
+ggplot(cityAvgPop, aes(x=log(Population), y=diffRichness)) + geom_point()
+
+
+
+MeanDiff <- cityAvgPop %>% 
+  mutate( CityCode =  abbreviate(City, 6)) %>% 
+  group_by(City, Population, CityCode) %>% 
+    summarize(perChange = mean(diffRichness), ymax = max(diffRichness), ymin= min(diffRichness)) %>%    mutate(logPop = log10(Population))
+
+ggplot(MeanDiff, aes(x=Population , y=perChange)) + 
+  theme_classic() + scale_fill_brewer(palette="YlOrRd") +
+  xlab("Human population (log-scaled)") + ylab("Percent change in contemporary richness") +
+  geom_errorbar(aes(x= Population, ymin=ymin, ymax=ymax), size=1.4) +
+  geom_label( aes(label=CityCode))  + scale_x_log10() + ylim( -0.5, -0.2)
+
+
+cor.test(MeanDiff$Population, MeanDiff$perChange)
+```
+
+
 
 
 #### Appendix Figures
-
-
-
+```{r}
 #### Richness per city
 
 ## Calculate species richness per 
@@ -294,44 +354,5 @@ ggplot(ecoRich, aes(x=currentRichness, y= diffRichness*100, label=CityCode, colo
   theme_classic() + ylab("Decline in Current Species Richness (%)") +
   xlab("Current Species Richness") +
   scale_colour_brewer(palette = "Set1")
-
-### Test for differences among climate models
-
-
-m1 <- glm(changeProb ~ SSP * Year, data= taxaClimate)
-anova(m1, test="Chisq")
-
-## pairwise contrast
-library(emmeans)
-emmeans(m1, pairwise~SSP*Year)
-
-
-
-
-### Compare population vs mean change in city
-
-pop <- read.csv("data//cityPopulation.csv", stringsAsFactors = F)
-
-cityAvgPop <- merge(meanRichness, pop, by="City")
-
-ggplot(cityAvgPop, aes(x=log(Population), y=diffRichness)) + geom_point()
-
-
-
-MeanDiff <- cityAvgPop %>% 
-  mutate( CityCode =  abbreviate(City, 6)) %>% 
-  group_by(City, Population, CityCode) %>% 
-    summarize(perChange = mean(diffRichness), ymax = max(diffRichness), ymin= min(diffRichness)) %>% 
-  mutate(logPop = log10(Population))
-
-ggplot(MeanDiff, aes(x=Population , y=perChange)) + 
-  theme_classic() + scale_fill_brewer(palette="YlOrRd") +
-  xlab("Human population (log-scaled)") + ylab("Percent change in contemporary richness") +
-  geom_errorbar(aes(x= Population, ymin=ymin, ymax=ymax), size=1.4) +
-  geom_label( aes(label=CityCode))  + scale_x_log10() + ylim( -0.5, -0.2)
-
-
-cor.test(MeanDiff$Population, MeanDiff$perChange)
-
-
+```
 
