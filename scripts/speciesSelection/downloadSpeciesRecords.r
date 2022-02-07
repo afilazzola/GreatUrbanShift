@@ -64,6 +64,11 @@ geographyPatterns <- foreach(j = 1:nrow(masterList), .combine=c,  .packages=c("t
 
 
 
+### Species needed to be manually downloaded 
+# masterList <- data.frame(species = c("Cardinalis cardinalis","Vireo olivaceus","Setophaga coronata","Agelaius phoeniceus",
+#   "Sturnus vulgaris","Spizella passerina","Turdus migratorius","Zenaida macroura","Passer domesticus",
+#   "Junco hyemalis","Corvus brachyrhynchos","Cyanocitta cristata","Spinus tristis","Branta canadensis","Picoides pubescens",
+#   "Poecile atricapillus","Quiscalus quiscula","Thryothorus ludovicianus","Baeolophus bicolor","Pieris rapae","Vespula vulgaris","Cicindela formosa"))
 
 
 #### Create Download request directly from GBIF
@@ -76,7 +81,7 @@ masterList[i,"taxonKeys"] <- as.character(masterList$species[i]) %>%
   filter(matchtype == "EXACT" & status == "ACCEPTED") %>% 
   pull(usagekey) # get the gbif taxonkeys
 } , error=function(e) NA)
-}) ; beepr::beep(sound=6)
+})
 masterList["taxonKeys"] <- do.call(c, listOut) ## combine into one list of taxon keys
 masterList <- masterList %>% filter(!is.na(taxonKeys)) ## drop species without GBIF matches
 
@@ -173,7 +178,7 @@ gbifKeyList <- lapply(1:3, function(i) {
 
 
 
-### Download remaining species on at a time
+### Download remaining species one at a time
 for(i in 1:length(missingSpecies$taxonKeys)) {
   tryCatch({ ## catch species where download fails
 sampleSpp <- occ_search(taxonKey = missingSpecies[i,"taxonKeys"],  hasCoordinate=T,   ## select plants, in Canada, with coordinates
