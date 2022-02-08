@@ -13,25 +13,14 @@ library(rangeModelMetadata)
 ## Set WD
 setwd("~/projects/def-sapna/afila/GreatUrbanShift")
 
-##  Load functions functions
-sampleAround <- function(point, nsamples){
-cityBuffer <- circles(point, d=10000, lonlat=T, dissolve=F) ## 10 km radius (20 km buffer)
-cityBuffer <- cityBuffer@polygons
-crs(cityBuffer) <- CRS("+proj=longlat +datum=WGS84 +no_defs")
-samplePoints <- spsample(cityBuffer, nsamples, sp=T, type="stratified")
-return(samplePoints)
-}
-
 ## Load NA polygon
 NApoly <- readOGR("data//CanUSA.shp")
 
 ## Load Climate
-climateFiles <- list.files("data//climate//", full.names = T)
-climateRasters <- stack(climateFiles) ## Drop MAR with missing values
-names(climateRasters) <- paste0("bio",1:19)
-climateRasters <- climateRasters[[c("bio1","bio3","bio4","bio5","bio6","bio12","bio13","bio14","bio15")]]
-climateRasters <- climateRasters %>% crop(., NApoly) %>% mask(., NApoly) ## load sampling grid
-
+climateFiles <- list.files("data//climateNA//", full.names = T)
+climateRasters <- stack(climateFiles)  
+names(climateRasters) <- gsub("Normal_1991_2020_", "", names(climateRasters) )
+climateRasters <- climateRasters %>% projectRaster(., crs = crs(NApoly)) %>% mask(., NApoly) 
 
 ## Load species
 speciesFilepath <- commandArgs(trailingOnly = TRUE)
@@ -41,40 +30,30 @@ sppList <- read.csv("data//cityData//UpdatedSpeciesList.csv")
 
 ## load in current and future climate
 CurrentcityClimate <- read.csv("data//currentCityClimate.csv")
-futureClimate <- read.csv("data//futureClimate//futureClimate.csv")
+futureClimate <- read.csv("data//futureClimate.csv")
+GCMclimate <- read.csv("data//futureGCMClimate.csv")
 
 ## Load cities to examine and add buffer
 cities <- read.csv("data//CityList.csv")
 coordinates(cities) <- ~lon + lat
 proj4string(cities) <- CRS("+proj=longlat +datum=WGS84")
 
-### Bias corrections
-gridThinning <- climateRasters[[1]]
-gridThinning[!is.na(gridThinning)] <- 0
-
-
 ##### Spatial points processing  
           
 ## Load occurrences
-spLoad <- read.csv(speciesFilepath, stringsAsFactors = F)
-spLoad <- spLoad[!is.na(spLoad$decimalLongitude),] ## drop NA observations
+sp1 <- read.csv(speciesFilepath, stringsAsFactors = F)
+sp1 <- sp1[!is.na(sp1$decimalLongitude),] ## drop NA observations
+sp1 <- sp1[!duplicated(sp1[c("decimalLongitude","decimalLatitude")]),] ## drop duplicate coordinates to speed processing
 print(basename(speciesFilepath)) ## export species filepath to export file
 
 ## Get species info
-speciesInfo <- sppList[sppList$species %in% unique(spLoad$species),] %>% dplyr::select(-city) %>% data.frame()
+speciesInfo <- sppList[sppList$species %in% unique(sp1$species),] %>% dplyr::select(-city) %>% data.frame()
+speciesName <- basename(speciesFilepath) %>% gsub(".csv", "", .) ## list species name
+
 
 ## Assign spatial coordinates
-coordinates(spLoad) <- ~decimalLongitude + decimalLatitude ## Transform occurrences to spdataframe
-proj4string(spLoad) <- CRS("+proj=longlat +datum=WGS84")
-
-## Thin occurrences using observations per grid cell
-## systematic sampling as the most effect form of bias correct https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0097122
-sp1 <- gridSample(spLoad, gridThinning, n=1)  %>% data.frame()
 coordinates(sp1) <- ~decimalLongitude + decimalLatitude ## Transform occurrences to spdataframe
 proj4string(sp1) <- CRS("+proj=longlat +datum=WGS84")
-
-## list species name
-speciesName <- basename(speciesFilepath) %>% gsub(".csv", "", .)
 
 ## Generate sample area for background points
 samplearea <- raster::buffer(sp1, width=100000, dissolve=T) ## 100 km buffer
@@ -82,16 +61,19 @@ crs(samplearea) <- crs(sp1)
 
 ## determine the number of background points
 nbackgr <- ifelse(nrow(data.frame(sp1)) > 9999, nrow(data.frame(sp1)) ,10000) ## 10k unless occurrences are more than 10k
- 
 
 ####### Unable to use bias file method - restrict background instead
 ## Select points
-samplearea <- mask(gridThinning, samplearea)
+samplearea <- mask(climateRasters[[1]], samplearea)
 backgr <- randomPoints(samplearea, n=nbackgr, p =sp1)  %>% data.frame() ## sample points, exclude cells where presence occurs
 coordinates(backgr) <- ~x+y ## re-assign as spatial points
 proj4string(backgr)  <- crs(sp1) ## assign CRS
 
+
+### Conduct random spatial black CV https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210X.13107
 ## withhold 20% for sample testing
+get.checkerboard1(occs = sp1, envs = climateRasters, bg = backgr, aggregation.factor=5)
+
 fold.p <- kfold(sp1, k=5)
 occtest.p <-sp1[fold.p == 4, ]
 occtrain.p <- sp1[fold.p != 4, ]
@@ -132,7 +114,7 @@ max1 <- ENMeval::ENMevaluate(occ=trainDF, envs = bestClim, bg = data.frame(occtr
                     tune.args = tuneArgs, 
                     taxon.name=speciesName, ## add species name
                     progbar=F, 
-                    partitions = 'none',  ## fully withheld for better model optimization https://jamiemkass.github.io/ENMeval/articles/ENMeval-2.0.0-vignette.html#user
+                    partitions = 'none',  ## fully withheld for better model optimization Soley-Guardia et al. 2019 https://jamiemkass.github.io/ENMeval/articles/ENMeval-2.0.0-vignette.html#user
                     quiet=T, ## silence messages but not errors
                     doClamp=F, ## remove clamping criteria which is not necessary unless extrapolating
                     algorithm='maxent.jar')

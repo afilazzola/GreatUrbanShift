@@ -30,32 +30,53 @@ allPoints <- lapply(1:nrow(cities), function(i)  {
 )
 cityPoints <- do.call(rbind, allPoints)
 
-## Load NA polygon
-NApoly <- readOGR("data//CanUSA.shp")
-
 
 ## List future climates
 allClimate <- list.files("~/scratch/climateNA/", pattern = ".tif", recursive = T, full.names = T)
 climateType <- gsub("/.*", "", gsub(".*climateNA//", "", allClimate))
-gcmSSP <- gsub("_bioclim.zip", "", basename(allClimate))
+gcmSSP <- gsub(".tif", "", basename(allClimate))
 gcms <- gsub("_.*", "", gcmSSP)
-ssps <- gsub("^[^_]*_", "", gcmSSP)
+ssps <- gsub("_.*", "", gsub("^[^_]*_", "", gcmSSP))
+variableName <- gsub(".*2071_|.*2020_", "", gcmSSP)
 
 climateFileDF <- data.frame(filepaths = allClimate,
-    climateType, gcms, ssps)
+    climateType, gcms, ssps, variables = variableName)
 
 
-allScenarios <- lapply(1:nrow(allClimate), function(j)  {
+allScenarios <- lapply(1:nrow(climateFileDF), function(j)  {
   
 ## Load and extract climate rasters
-tempStack <- stack(climateFileDF[j, "filepaths"])
-extractClimate <- extract(tempStack, cityPoints)
+tempStack <- raster(climateFileDF[j, "filepaths"])
+cityObs <- data.frame(cityPoints)
+cityObs[,"climateValue"] <- extract(tempStack, cityPoints)
 
 ## labels
-extractClimate[,"SSP"] <- climateFileDF[j, "ssps"]
-extractClimate[,"GCM"] <- climateFileDF[j, "gcms"]
-extractClimate[,"Climate"] <- climateFileDF[j, "climateType"]
-extractClimate
+cityObs[,"SSP"] <- climateFileDF[j, "ssps"]
+cityObs[,"GCM"] <- climateFileDF[j, "gcms"]
+cityObs[,"Climate"] <- climateFileDF[j, "climateType"]
+cityObs[,"variable"] <- climateFileDF[j, "variables"]
+cityObs
 })
 
 allClimateExtracted <- do.call(rbind, allScenarios)
+
+
+### Split up climate into respective CSVs
+library(dplyr)
+library(tidyr)
+
+
+currentClimate <- allClimateExtracted %>% 
+  filter(Climate == "currentClimate") %>% 
+  spread(variable, climateValue) %>% 
+  write.csv(. , "data//currentClimate.csv")
+  
+futureClimate <- allClimateExtracted %>% 
+  filter(Climate == "futureClimate") %>% 
+  spread(variable, climateValue) %>% 
+  write.csv(. , "data//futureClimate.csv")
+
+futureGCMClimate <- allClimateExtracted %>% 
+  filter(Climate == "futureGCMs") %>% 
+  spread(variable, climateValue) %>% 
+  write.csv(. , "data//futureGCMClimate.csv")
