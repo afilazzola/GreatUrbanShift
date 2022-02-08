@@ -24,6 +24,7 @@ climateRasters <- climateRasters %>% projectRaster(., crs = crs(NApoly)) %>% mas
 
 ## Load species
 speciesFilepath <- commandArgs(trailingOnly = TRUE)
+speciesFilepath <- list.files("data//speciesOcc//", full.names=T)[1] ## test
 
 ## Load Master species list
 sppList <- read.csv("data//cityData//UpdatedSpeciesList.csv")
@@ -39,7 +40,7 @@ coordinates(cities) <- ~lon + lat
 proj4string(cities) <- CRS("+proj=longlat +datum=WGS84")
 
 ##### Spatial points processing  
-          
+  
 ## Load occurrences
 sp1 <- read.csv(speciesFilepath, stringsAsFactors = F)
 sp1 <- sp1[!is.na(sp1$decimalLongitude),] ## drop NA observations
@@ -47,13 +48,14 @@ sp1 <- sp1[!duplicated(sp1[c("decimalLongitude","decimalLatitude")]),] ## drop d
 print(basename(speciesFilepath)) ## export species filepath to export file
 
 ## Get species info
-speciesInfo <- sppList[sppList$species %in% unique(sp1$species),] %>% dplyr::select(-city) %>% data.frame()
+speciesInfo <- sppList[sppList$species %in% unique(sp1$species),] %>% data.frame()
 speciesName <- basename(speciesFilepath) %>% gsub(".csv", "", .) ## list species name
 
 
 ## Assign spatial coordinates
 coordinates(sp1) <- ~decimalLongitude + decimalLatitude ## Transform occurrences to spdataframe
 proj4string(sp1) <- CRS("+proj=longlat +datum=WGS84")
+sp1 <- spTransform(sp1, crs(climateRasters))
 
 ## Generate sample area for background points
 samplearea <- raster::buffer(sp1, width=100000, dissolve=T) ## 100 km buffer
@@ -73,6 +75,8 @@ proj4string(backgr)  <- crs(sp1) ## assign CRS
 ### Conduct random spatial black CV https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210X.13107
 ## withhold 20% for sample testing
 get.checkerboard1(occs = sp1, envs = climateRasters, bg = backgr, aggregation.factor=5)
+get.checkerboard1(occs = sp1, envs = samplearea, bg = backgr, aggregation.factor=5)
+
 
 fold.p <- kfold(sp1, k=5)
 occtest.p <-sp1[fold.p == 4, ]
