@@ -32,9 +32,10 @@ speciesFilepath <- list.files("data//speciesOcc//", full.names=T)[1] ## test
 sppList <- read.csv("data//cityData//UpdatedSpeciesList.csv")
 
 ## load in current and future climate
-CurrentcityClimate <- read.csv("data//currentCityClimate.csv")
+currentClimate <- read.csv("data//currentClimate.csv")
 futureClimate <- read.csv("data//futureClimate.csv")
 GCMclimate <- read.csv("data//futureGCMClimate.csv")
+climateList <- list(currentClimate, futureClimate, GCMclimate)
 
 ## Load cities to examine and add buffer
 cities <- read.csv("data//CityList.csv")
@@ -60,11 +61,11 @@ proj4string(sp1) <- CRS("+proj=longlat +datum=WGS84")
 sp1 <- spTransform(sp1, crs(climateRasters))
 
 ## Generate sample area for background points
-samplearea <- raster::buffer(sp1, width=100000, dissolve=T) ## 100 km buffer
+samplearea <- raster::buffer(sp1, width = 100000, dissolve = T) ## 100 km buffer
 crs(samplearea) <- crs(sp1)
 
 ## determine the number of background points
-nbackgr <- ifelse(nrow(data.frame(sp1)) > 9999, nrow(data.frame(sp1)) ,10000) ## 10k unless occurrences are more than 10k
+nbackgr <- ifelse(nrow(sp1) > 9999, nrow(data.frame(sp1)) ,10000) ## 10k unless occurrences are more than 10k
 
 ####### Unable to use bias file method - restrict background instead
 ## Select points
@@ -93,13 +94,12 @@ names(occTrainDF) <- c("x","y") ## presence/absence need same column names
 bkrTrainDF <- data.frame(coordinates(partionedData$trainingAbsence))
 
 ### Run MaxEnt
-max1 <- ENMeval::ENMevaluate(occ=occTrainDF, envs = bestClim, bg = bkrTrainDF,
-                    tune.args = list(fc = c("L"), rm = 0.5),  
+max1 <- ENMeval::ENMevaluate(occ=occTrainDF[1:1000,], envs = bestClim, bg = bkrTrainDF[1:1000,],
+                    tune.args = list(fc = c("L","Q"), rm = 0.5),  
                     taxon.name=speciesName, ## add species name
                     progbar=F, 
                     partitions = "checkerboard1", # Conduct random spatial black CV https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210X.13107
                     quiet=F, ## silence messages but not errors
-                    parallel = T, numCores = 6,parallelType = "doParallel",
                     algorithm='maxent.jar')
 
 ## best model
@@ -113,22 +113,23 @@ erf <- evaluate(partionedData$testingPresence,
   partionedData$testingAbsence, 
   max1@models[[bestMax]], bestClim)
 
-# ## Compare against null model
-# modNull <- ENMeval::ENMnulls(max1, 
-#                              mod.settings = list(fc = as.character(modelOut[1,"fc"]), rm =  as.numeric(modelOut[1,"rm"])), 
-#                              no.iter = 100)
-# nullOut <- ENMeval::null.emp.results(modNull)
 
-
-## predict species
-CurrentcityClimate[,"speciesOcc"] <- predict(max1@models[[bestMax]], CurrentcityClimate,  type="logistic")
-citySummary <- CurrentcityClimate %>% group_by(City) %>%  ##  average by city
-  mutate(SSP = "currentClimate", Year = "currentClimate" ) %>% 
-  summarize(meanProb = mean(speciesOcc, na.rm=T), sdProb = sd(speciesOcc, na.rm=T)) %>% data.frame()
-
-citySummary[,"species"] <- speciesName %>% gsub("_", " ", .)
-
-write.csv(citySummary, paste0("out//cityPredict//CurrentClimate",speciesName,".csv"), row.names=FALSE)
+## predict species occurrences with each climate scenario
+predictedCitiesList <- lapply(climateList, function(climateDF) {
+  cityValuesSummarized <- j %>% 
+    dplyr::select(City, SSP, GCM, Climate) %>% 
+    mutate(speciesOcc = predict(max1@models[[bestMax]], j,  type="logistic")) %>% 
+    summarize(meanProb = mean(speciesOcc, na.rm=T), sdProb = sd(speciesOcc, na.rm=T)) %>% 
+    mutate(species = gsub("_", " ", speciesName)) %>% 
+    data.frame()  
+cityValuesSummarized
+})
+## Write predicted climates to CSVs
+lapply(predictedCitiesList, function(j) {
+  write.csv(j, 
+  paste0("out//cityPredict//", j$Climate, speciesName,".csv"), 
+  row.names=FALSE)
+})
 
 ## create output dataframe
 modelData <- speciesInfo 
@@ -152,22 +153,7 @@ modelData[,"AUCtrain"] <- as.character(modelOut[1,"auc.train"])
 ## save files
 write.csv(modelData, paste0("out//models//Model",speciesName,".csv"), row.names=FALSE)
 
-
-## predict future climate
-
-      ## Load future climate data
-      cityClimate <- futureClimate
-      
-      ## predict species
-      cityClimate[,"speciesOcc"] <- predict(max1@models[[bestMax]], cityClimate,  type="logistic")
-      citySummary <- cityClimate %>% group_by(City, SSP, Year) %>% summarize(meanProb = mean(speciesOcc, na.rm=T),
-                                                                                  sdProb = sd(speciesOcc, na.rm=T)) %>% data.frame()
-      citySummary[,"species"] <- speciesName %>% gsub("_", " ", .)
-      write.csv(citySummary, paste0("out//cityPredict//FutureClimate",speciesName,".csv"), row.names=FALSE)
-      
-
-
-      
+     
 ##  Generate SDM meta-data file
 ## https://onlinelibrary.wiley.com/doi/abs/10.1111/geb.12993
 ## https://onlinelibrary.wiley.com/doi/full/10.1111/ecog.04960
