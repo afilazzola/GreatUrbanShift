@@ -8,6 +8,7 @@ library(rgdal)
 library(dismo)
 library(rgeos)
 library(rJava)
+library(ecospat)
 library(rangeModelMetadata)
 
 ## Set WD
@@ -20,7 +21,8 @@ NApoly <- readOGR("data//CanUSA.shp")
 climateFiles <- list.files("data//climateNA//", full.names = T)
 climateRasters <- stack(climateFiles)  
 names(climateRasters) <- gsub("Normal_1991_2020_", "", names(climateRasters) )
-climateRasters <- climateRasters %>% projectRaster(., crs = crs(NApoly)) %>% mask(., NApoly) 
+climateRasters <- dropLayer(climateRasters, 
+  grep("MAR", names(climateRasters)))
 
 ## Load species
 speciesFilepath <- commandArgs(trailingOnly = TRUE)
@@ -71,56 +73,33 @@ backgr <- randomPoints(samplearea, n=nbackgr, p =sp1)  %>% data.frame() ## sampl
 coordinates(backgr) <- ~x+y ## re-assign as spatial points
 proj4string(backgr)  <- crs(sp1) ## assign CRS
 
-
-### Conduct random spatial black CV https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210X.13107
-## withhold 20% for sample testing
-get.checkerboard1(occs = sp1, envs = climateRasters, bg = backgr, aggregation.factor=5)
-get.checkerboard1(occs = sp1, envs = samplearea, bg = backgr, aggregation.factor=5)
-
-
-fold.p <- kfold(sp1, k=5)
-occtest.p <-sp1[fold.p == 4, ]
-occtrain.p <- sp1[fold.p != 4, ]
-fold.a <- kfold(backgr, k=5)
-occtest.a <- backgr[fold.a == 4, ]
-occtrain.a <- backgr[fold.a != 4, ]
-
+### Withold 10% of the data for independent validation
+partionedData <- kfoldPartionData(occurrences = sp1, absences = backgr)
 
 ###### Reduce co-linearity between models
-
-## Extract climate data
-pres <- extract(climateRasters, occtrain.p)
-abs <- extract(climateRasters, occtrain.a)
-allClim <- rbind(pres, abs) %>% data.frame()
-
-
-## Check for covariance
-colin <- usdm::vifcor(allClim[,-ncol(allClim)])
-selectVars <-  colin@results$Variables
-
+selectedVars <- FindColinearVariables(occurrences = partionedData$trainingPresence,
+  absences = partionedData$trainingAbsence, climate = climateRasters)
+bestClim <- climateRasters[[selectedVars]] ## Use best variables without colinearity issues
 
 ###### Conduct species distribution modelling
-
-## Use best variables without colinearity issues
-bestClim <- climateRasters[[selectVars]]
-
 
 ## Select feature classes and regularization parameters for Maxent
 tuneArgs <- list(fc = c("L", "Q", "P", "LQ","H","LQH","LQHP"), 
                   rm = seq(0.5, 3, 0.5))
 
 ## Specify training dataset
-trainDF <- data.frame(occtrain.p)
-names(trainDF) <- c("x","y")
+occTrainDF <- data.frame(coordinates(partionedData$trainingPresence))
+names(occTrainDF) <- c("x","y") ## presence/absence need same column names
+bkrTrainDF <- data.frame(coordinates(partionedData$trainingAbsence))
 
 ### Run MaxEnt
-max1 <- ENMeval::ENMevaluate(occ=trainDF, envs = bestClim, bg = data.frame(occtrain.a),
-                    tune.args = tuneArgs, 
+max1 <- ENMeval::ENMevaluate(occ=occTrainDF, envs = bestClim, bg = bkrTrainDF,
+                    tune.args = list(fc = c("L"), rm = 0.5),  
                     taxon.name=speciesName, ## add species name
                     progbar=F, 
-                    partitions = 'none',  ## fully withheld for better model optimization Soley-Guardia et al. 2019 https://jamiemkass.github.io/ENMeval/articles/ENMeval-2.0.0-vignette.html#user
-                    quiet=T, ## silence messages but not errors
-                    doClamp=F, ## remove clamping criteria which is not necessary unless extrapolating
+                    partitions = "checkerboard1", # Conduct random spatial black CV https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210X.13107
+                    quiet=F, ## silence messages but not errors
+                    parallel = T, numCores = 6,parallelType = "doParallel",
                     algorithm='maxent.jar')
 
 ## best model
@@ -130,7 +109,9 @@ varImp <- max1@variable.importance[bestMax] %>% data.frame()
 names(varImp) <- c("variable","percent.contribution","permutation.importance")
 
 ## evaluate
-erf <- evaluate(occtest.p, occtest.a, max1@models[[bestMax]], bestClim)
+erf <- evaluate(partionedData$testingPresence, 
+  partionedData$testingAbsence, 
+  max1@models[[bestMax]], bestClim)
 
 # ## Compare against null model
 # modNull <- ENMeval::ENMnulls(max1, 

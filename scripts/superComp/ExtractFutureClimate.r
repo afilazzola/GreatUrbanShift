@@ -30,7 +30,6 @@ allPoints <- lapply(1:nrow(cities), function(i)  {
 )
 cityPoints <- do.call(rbind, allPoints)
 
-
 ## List future climates
 allClimate <- list.files("~/scratch/climateNA/", pattern = ".tif", recursive = T, full.names = T)
 climateType <- gsub("/.*", "", gsub(".*climateNA//", "", allClimate))
@@ -42,6 +41,9 @@ variableName <- gsub(".*2071_|.*2020_", "", gcmSSP)
 climateFileDF <- data.frame(filepaths = allClimate,
     climateType, gcms, ssps, variables = variableName)
 
+## Load one raster to transform climate data
+crsSettingRaster <- raster(climateFileDF[1,"filepaths"])
+cityPoints <- spTransform(cityPoints, crs(crsSettingRaster))
 
 allScenarios <- lapply(1:nrow(climateFileDF), function(j)  {
   
