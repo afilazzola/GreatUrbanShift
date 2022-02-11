@@ -8,14 +8,18 @@ library(rgdal)
 library(dismo)
 library(rgeos)
 library(rJava)
-library(ecospat)
+library(ENMeval)
 library(rangeModelMetadata)
+
+## options(java.parameters = "-Xmx8g")
 
 ## Set WD
 setwd("~/projects/def-sapna/afila/GreatUrbanShift")
 
 ## Load NA polygon
 NApoly <- readOGR("data//CanUSA.shp")
+
+source("scripts//SDMfunctions.r")
 
 ## Load Climate
 climateFiles <- list.files("data//climateNA//", full.names = T)
@@ -36,6 +40,11 @@ currentClimate <- read.csv("data//currentClimate.csv")
 futureClimate <- read.csv("data//futureClimate.csv")
 GCMclimate <- read.csv("data//futureGCMClimate.csv")
 climateList <- list(currentClimate, futureClimate, GCMclimate)
+climateList <- lapply(climateList, function(k) { ## Drop NA values
+  k %>% 
+    dplyr::select(-MAR) %>% 
+    drop_na()
+})
 
 ## Load cities to examine and add buffer
 cities <- read.csv("data//CityList.csv")
@@ -67,39 +76,39 @@ crs(samplearea) <- crs(sp1)
 ## determine the number of background points
 nbackgr <- ifelse(nrow(sp1) > 9999, nrow(data.frame(sp1)) ,10000) ## 10k unless occurrences are more than 10k
 
-####### Unable to use bias file method - restrict background instead
-## Select points
+####### Unable to use bias file method - restrict background points instead
 samplearea <- mask(climateRasters[[1]], samplearea)
 backgr <- randomPoints(samplearea, n=nbackgr, p =sp1)  %>% data.frame() ## sample points, exclude cells where presence occurs
 coordinates(backgr) <- ~x+y ## re-assign as spatial points
 proj4string(backgr)  <- crs(sp1) ## assign CRS
 
-### Withold 10% of the data for independent validation
-partionedData <- kfoldPartionData(occurrences = sp1, absences = backgr)
-
 ###### Reduce co-linearity between models
-selectedVars <- FindColinearVariables(occurrences = partionedData$trainingPresence,
-  absences = partionedData$trainingAbsence, climate = climateRasters)
+selectedVars <- FindColinearVariables(occurrences = sp1,
+  absences = backgr, climate = climateRasters)
 bestClim <- climateRasters[[selectedVars]] ## Use best variables without colinearity issues
 
 ###### Conduct species distribution modelling
+
+## Partionined fully withheld
+partitionedData <- kfoldPartitionData(occurrences = sp1, absences = backgr)
 
 ## Select feature classes and regularization parameters for Maxent
 tuneArgs <- list(fc = c("L", "Q", "P", "LQ","H","LQH","LQHP"), 
                   rm = seq(0.5, 3, 0.5))
 
 ## Specify training dataset
-occTrainDF <- data.frame(coordinates(partionedData$trainingPresence))
+occTrainDF <- partitionedData$trainingPresence
 names(occTrainDF) <- c("x","y") ## presence/absence need same column names
-bkrTrainDF <- data.frame(coordinates(partionedData$trainingAbsence))
+bkrTrainDF <- partitionedData$trainingAbsence
+
 
 ### Run MaxEnt
-max1 <- ENMeval::ENMevaluate(occ=occTrainDF[1:1000,], envs = bestClim, bg = bkrTrainDF[1:1000,],
-                    tune.args = list(fc = c("L","Q"), rm = 0.5),  
+max1 <- ENMevaluate(occ=occTrainDF, env = bestClim, bg.coords = bkrTrainDF,
+                    tune.args = tuneArgs, 
                     taxon.name=speciesName, ## add species name
                     progbar=F, 
                     partitions = "checkerboard1", # Conduct random spatial black CV https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210X.13107
-                    quiet=F, ## silence messages but not errors
+                    quiet=T, ## silence messages but not errors
                     algorithm='maxent.jar')
 
 ## best model
@@ -108,22 +117,25 @@ modelOut <- max1@results[bestMax,]
 varImp <- max1@variable.importance[bestMax] %>% data.frame()
 names(varImp) <- c("variable","percent.contribution","permutation.importance")
 
-## evaluate
-erf <- evaluate(partionedData$testingPresence, 
-  partionedData$testingAbsence, 
+## find threshold
+evalOut <- dismo::evaluate(partitionedData$testingPresence, 
+  partitionedData$testingPresence,
   max1@models[[bestMax]], bestClim)
-
+thresholdIdentified <- threshold(evalOut)
 
 ## predict species occurrences with each climate scenario
-predictedCitiesList <- lapply(climateList, function(climateDF) {
+predictedCitiesList <- lapply(climateList, function(j) {
   cityValuesSummarized <- j %>% 
     dplyr::select(City, SSP, GCM, Climate) %>% 
     mutate(speciesOcc = predict(max1@models[[bestMax]], j,  type="logistic")) %>% 
+    filter(speciesOcc > thresholdIdentified$spec_sens) %>%  ## drop observations above threshold
+    group_by(City, SSP, GCM, Climate) %>% 
     summarize(meanProb = mean(speciesOcc, na.rm=T), sdProb = sd(speciesOcc, na.rm=T)) %>% 
     mutate(species = gsub("_", " ", speciesName)) %>% 
     data.frame()  
 cityValuesSummarized
 })
+
 ## Write predicted climates to CSVs
 lapply(predictedCitiesList, function(j) {
   write.csv(j, 
@@ -134,14 +146,12 @@ lapply(predictedCitiesList, function(j) {
 ## create output dataframe
 modelData <- speciesInfo 
 modelData[,"fileName"] <- basename(speciesFilepath)
-modelData[,"AUCtest"] <- erf@auc ## AUC value
-modelData[,"nobs"] <- nrow(spLoad) ## number of presence points used overall
-modelData[,"nthin"] <- nrow(sp1) ## number of presence points used after thinned
-modelData[,"np"] <- erf@np ## number of presence points used for evaluation
-modelData[,"na"] <- erf@na ## number of absence points used for evaluation
-modelData[,"cor"] <- erf@cor ## correlation between test data and model
-modelData[,"TPR"] <- mean(erf@TPR) ## True positive rate
-modelData[,"TNR"] <- mean(erf@TNR) ## True negative rate
+modelData[,"AUCtest"] <- modelOut$auc.val.avg 
+modelData[,"AUCdiff"] <- modelOut$auc.diff.avg 
+modelData[,"CBItest"] <- modelOut$cbi.val.avg 
+modelData[,"threshold"] <- thresholdIdentified$spec_sens
+modelData[,"nobs"] <- nrow(sp1) ## number of presence points used overall
+modelData[,"nthin"] <- nrow(max1@occs) ## number of presence points used after thinned
 modelData[,"importantVars"] <- paste0(varImp$variable, collapse=";")
 modelData[,"importantValue"] <- paste0(varImp$permutation.importance, collapse=";")
 modelData[,"percentContribution"] <- paste0(varImp$percent.contribution, collapse=";")
@@ -159,7 +169,7 @@ write.csv(modelData, paste0("out//models//Model",speciesName,".csv"), row.names=
 ## https://onlinelibrary.wiley.com/doi/full/10.1111/ecog.04960
 rmm <-  ENMeval::eval.rmm(max1)
 ## specify missing parameters
-rmm$authorship$rmmName  <- paste0("CUEFilazzolaAlessandro_2021_Maxent",speciesName)
+rmm$authorship$rmmName  <- paste0("CUEFilazzolaAlessandro_2022_Maxent",speciesName)
 rmm$authorship$license  <- "CC BY-NC"
 rmm$data$occurrence$yearMin  <- "2000"
 rmm$data$occurrence$yearMax  <- "2021"
