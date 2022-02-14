@@ -11,8 +11,6 @@ library(rJava)
 library(ENMeval)
 library(rangeModelMetadata)
 
-## options(java.parameters = "-Xmx8g")
-
 ## Set WD
 setwd("~/projects/def-sapna/afila/GreatUrbanShift")
 
@@ -26,11 +24,10 @@ climateFiles <- list.files("data//climateNA//", full.names = T)
 climateRasters <- stack(climateFiles)  
 names(climateRasters) <- gsub("Normal_1991_2020_", "", names(climateRasters) )
 climateRasters <- dropLayer(climateRasters, 
-  grep("MAR", names(climateRasters)))
+  grep("MAR", names(climateRasters))) ## NA values in raster
 
 ## Load species
 speciesFilepath <- commandArgs(trailingOnly = TRUE)
-speciesFilepath <- list.files("data//speciesOcc//", full.names=T)[1] ## test
 
 ## Load Master species list
 sppList <- read.csv("data//cityData//UpdatedSpeciesList.csv")
@@ -65,9 +62,13 @@ speciesName <- basename(speciesFilepath) %>% gsub(".csv", "", .) ## list species
 
 
 ## Assign spatial coordinates
+## systematic sampling as the most effect form of bias correct https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0097122
 coordinates(sp1) <- ~decimalLongitude + decimalLatitude ## Transform occurrences to spdataframe
 proj4string(sp1) <- CRS("+proj=longlat +datum=WGS84")
 sp1 <- spTransform(sp1, crs(climateRasters))
+
+## Spatial thinning to reduce bias
+sp1 <- ThinByGrid(sp1, climateRasters[[1]])
 
 ## Generate sample area for background points
 samplearea <- raster::buffer(sp1, width = 100000, dissolve = T) ## 100 km buffer
@@ -82,44 +83,40 @@ backgr <- randomPoints(samplearea, n=nbackgr, p =sp1)  %>% data.frame() ## sampl
 coordinates(backgr) <- ~x+y ## re-assign as spatial points
 proj4string(backgr)  <- crs(sp1) ## assign CRS
 
-###### Reduce co-linearity between models
-selectedVars <- FindColinearVariables(occurrences = sp1,
+###### Reduce co-linearity between models - select best variables
+collinearVariablesClimate <- FindCollinearVariables(occurrences = sp1,
   absences = backgr, climate = climateRasters)
-bestClim <- climateRasters[[selectedVars]] ## Use best variables without colinearity issues
+bestClim <- climateRasters[[collinearVariablesClimate$selectVars]] 
 
 ###### Conduct species distribution modelling
 
 ## Partionined fully withheld
-partitionedData <- kfoldPartitionData(occurrences = sp1, absences = backgr)
+partitionedData <- kfoldPartitionData(collinearVariablesClimate$presClim, 
+  collinearVariablesClimate$absClim)
 
 ## Select feature classes and regularization parameters for Maxent
 tuneArgs <- list(fc = c("L", "Q", "P", "LQ","H","LQH","LQHP"), 
                   rm = seq(0.5, 3, 0.5))
 
-## Specify training dataset
-occTrainDF <- partitionedData$trainingPresence
-names(occTrainDF) <- c("x","y") ## presence/absence need same column names
-bkrTrainDF <- partitionedData$trainingAbsence
-
-
 ### Run MaxEnt
-max1 <- ENMevaluate(occ=occTrainDF, env = bestClim, bg.coords = bkrTrainDF,
+max1 <- ENMevaluate(occ=partitionedData$trainingPresence,
+                    bg.coords = partitionedData$trainingAbsence,
                     tune.args = tuneArgs, 
                     taxon.name=speciesName, ## add species name
                     progbar=F, 
-                    partitions = "checkerboard1", # Conduct random spatial black CV https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210X.13107
+                    partitions = "block", # Conduct random spatial block CV https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210X.13107
                     quiet=T, ## silence messages but not errors
                     algorithm='maxent.jar')
 
 ## best model
-bestMax <- which(max1@results$delta.AICc==0)[1]
+bestMax <- which.max(max1@results$cbi.val.avg)
 modelOut <- max1@results[bestMax,]
 varImp <- max1@variable.importance[bestMax] %>% data.frame()
 names(varImp) <- c("variable","percent.contribution","permutation.importance")
 
 ## find threshold
-evalOut <- dismo::evaluate(partitionedData$testingPresence, 
-  partitionedData$testingPresence,
+evalOut <- dismo::evaluate(partitionedData$testingPresence[,c("longitude","latitude")], 
+  partitionedData$testingPresence[,c("longitude","latitude")],
   max1@models[[bestMax]], bestClim)
 thresholdIdentified <- threshold(evalOut)
 
@@ -143,6 +140,16 @@ lapply(predictedCitiesList, function(j) {
   row.names=FALSE)
 })
 
+## Check for spatial auto-correlation
+maxentResiduals <- GetMaxEntResiduals(partitionedData$trainingPresence,
+  partitionedData$trainingAbsence, 
+  max1@models[[bestMax]])
+outMoranList <- lapply(1:10, function(x) {
+  set.seed(x)
+  GetSubsampledMoranI(maxentResiduals, niter = 9999)
+})
+outMoranDF <- do.call(rbind, outMoranList)
+
 ## create output dataframe
 modelData <- speciesInfo 
 modelData[,"fileName"] <- basename(speciesFilepath)
@@ -158,6 +165,8 @@ modelData[,"percentContribution"] <- paste0(varImp$percent.contribution, collaps
 modelData[,"Features"] <- as.character(modelOut[1,"fc"])
 modelData[,"Regularization"] <- as.character(modelOut[1,"rm"])
 modelData[,"AUCtrain"] <- as.character(modelOut[1,"auc.train"])
+modelData[,"MeanMoransObs"] <- mean(outMoranDF$MoransObs)
+modelData[,"MeanMoranPval"] <- mean(outMoranDF$MoransPval)
 
 
 ## save files
