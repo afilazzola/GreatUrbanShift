@@ -28,6 +28,7 @@ climateRasters <- dropLayer(climateRasters,
 
 ## Load species
 speciesFilepath <- commandArgs(trailingOnly = TRUE)
+# speciesFilepath <- list.files("data//speciesOcc", pattern=".csv", full.names = T)[1]
 
 ## Load Master species list
 sppList <- read.csv("data//cityData//UpdatedSpeciesList.csv")
@@ -68,20 +69,23 @@ proj4string(sp1) <- CRS("+proj=longlat +datum=WGS84")
 sp1 <- spTransform(sp1, crs(climateRasters))
 
 ## Spatial thinning to reduce bias
-sp1 <- ThinByGrid(sp1, climateRasters[[1]])
+emptyThinningGrid <- MakeEmptyGridResolution(climateRasters[[1]],
+  aggFactor = 5) ## convert to 5x5 km
+sp1 <- ThinByGrid(sp1, emptyThinningGrid)
 
 ## Generate sample area for background points
 samplearea <- raster::buffer(sp1, width = 100000, dissolve = T) ## 100 km buffer
 crs(samplearea) <- crs(sp1)
 
 ## determine the number of background points
-nbackgr <- ifelse(nrow(sp1) > 9999, nrow(data.frame(sp1)) ,10000) ## 10k unless occurrences are more than 10k
+nbackgr <- ifelse(length(sp1) > 9999, length(sp1), 10000) ## 10k unless occurrences are more than 10k
 
 ####### Unable to use bias file method - restrict background points instead
 samplearea <- mask(climateRasters[[1]], samplearea)
 backgr <- randomPoints(samplearea, n=nbackgr, p =sp1)  %>% data.frame() ## sample points, exclude cells where presence occurs
 coordinates(backgr) <- ~x+y ## re-assign as spatial points
 proj4string(backgr)  <- crs(sp1) ## assign CRS
+backgr <- ThinByGrid(backgr, emptyThinningGrid)
 
 ###### Reduce co-linearity between models - select best variables
 collinearVariablesClimate <- FindCollinearVariables(occurrences = sp1,
@@ -136,7 +140,7 @@ cityValuesSummarized
 ## Write predicted climates to CSVs
 lapply(predictedCitiesList, function(j) {
   write.csv(j, 
-  paste0("out//cityPredict//", j$Climate, speciesName,".csv"), 
+  paste0("out//cityPredict//", unique(j$Climate), speciesName,".csv"), 
   row.names=FALSE)
 })
 
@@ -144,11 +148,8 @@ lapply(predictedCitiesList, function(j) {
 maxentResiduals <- GetMaxEntResiduals(partitionedData$trainingPresence,
   partitionedData$trainingAbsence, 
   max1@models[[bestMax]])
-outMoranList <- lapply(1:10, function(x) {
-  set.seed(x)
-  GetSubsampledMoranI(maxentResiduals, niter = 9999)
-})
-outMoranDF <- do.call(rbind, outMoranList)
+outMoranDF <- GetSubsampledMoranI(maxentResiduals, niter = 999)
+
 
 ## create output dataframe
 modelData <- speciesInfo 
@@ -157,7 +158,7 @@ modelData[,"AUCtest"] <- modelOut$auc.val.avg
 modelData[,"AUCdiff"] <- modelOut$auc.diff.avg 
 modelData[,"CBItest"] <- modelOut$cbi.val.avg 
 modelData[,"threshold"] <- thresholdIdentified$spec_sens
-modelData[,"nobs"] <- nrow(sp1) ## number of presence points used overall
+modelData[,"nobs"] <- length(sp1) ## number of presence points used overall
 modelData[,"nthin"] <- nrow(max1@occs) ## number of presence points used after thinned
 modelData[,"importantVars"] <- paste0(varImp$variable, collapse=";")
 modelData[,"importantValue"] <- paste0(varImp$permutation.importance, collapse=";")
