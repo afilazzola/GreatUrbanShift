@@ -1,12 +1,27 @@
 #### SDM functions
 ## A list of functions to facilitate processing SDM 
 
+### Set raster grid for observations
+MakeEmptyGridResolution <- function(x, aggFactor){
+climateRasters[[1]]
+r0 <- raster(nrows = nrow(x),
+    ncols =  ncol(x),
+    ext = extent(x),
+    crs = crs(x))
+values(r0) <- 0
+rAggregated <- aggregate(r0, fact = aggFactor, fun = min)
+return(rAggregated)
+}
+
+
+
 ### Thin observations
 ThinByGrid <- function(occurrences, raster){
     tempRaster <- raster
     tempRaster[!is.na(tempRaster)] <- 0
 
     thinnedPoints <- gridSample(occurrences, tempRaster, n=1)  %>% data.frame()
+    names(thinnedPoints)[1:2] <- c("decimalLongitude","decimalLatitude")
     coordinates(thinnedPoints) <- ~decimalLongitude + decimalLatitude ## Transform occurrences to spdataframe
     proj4string(thinnedPoints) <- crs(occurrences)
     return(thinnedPoints)
@@ -59,30 +74,49 @@ abs <- abs %>% dplyr::select(all_of(c("longitude","latitude",selectVars)))
 return(list(presClim = pres, absClim = abs, selectVars = selectVars))
 }
 
+
+## Standard error
+se <- function(x) {
+    sd(x, na.rm = T) / sqrt(length(x[!is.na(x)]))
+}
+
 ### Pull residuals from Maxent model
 GetMaxEntResiduals <- function(occ, abs, model){
 allpoints <- rbind(occ, abs)
 allpoints[,"presence"] <- c(rep(1, nrow(occ)),rep(0, nrow(abs)))
 allpoints <- allpoints[!is.na(rowSums(allpoints)),]
 allpoints[,"predictedOccurrence"] <- predict(model, allpoints, type = "logistic")
-allpoints[,"residuals"] <- allpoints$presence - allpoints$predictedOccurrence
+allpoints[,"residuals"] <- (allpoints$presence - allpoints$predictedOccurrence) / se(allpoints$predictedOccurrence)
 return(allpoints)
 }
 
 
+### Conduct Moran's I on residuals
+require(spdep)
 
-### Get Moran's I value
-require(ape)
 GetSubsampledMoranI <- function(x, niter){
-subSample <- dplyr::sample_n(x, niter)
-residualMatrix <- subSample[,c("longitude","latitude")]
-residualValues <- subSample$residuals
-outDist <- as.matrix(dist(residualMatrix))
-
-moranOut <- ape::Moran.I(residualValues, outDist, 
-          alternative = "two.sided", scaled = T)
-moranOutDF <- data.frame(moranOut)
-names(moranOutDF) <- c("MoransObs","MoransExp","MoransSD","MoransPval")
-
-return(data.frame(moranOutDF))
+## Sumsample large DF to increase runtime
+if(nrow(maxentResiduals) > 100000){
+    residualDF <- dplyr::sample_n(maxentResiduals, 100000)
+} else {
+    residualDF <- maxentResiduals
 }
+residualDFSimplified <- residualDF %>% 
+    dplyr::select(longitude, latitude, residuals) %>% 
+    distinct(longitude, latitude, .keep_all = T)
+coords <- coordinates(subSample[,c("longitude","latitude")])
+
+distances  <-  dnearneigh(coords, 5000, 100000) 
+ResidualWeights <- nb2listw(distances, style="B")
+
+moranOut <- moran.mc(subSample$residuals, 
+    listw = ResidualWeights, 
+    nsim = niter)
+
+moranOutDF <- data.frame(
+    MoranObs = moranOut$statistic,
+    MoransPval = moranOut$p.value
+)
+return(moranOutDF)
+}
+
