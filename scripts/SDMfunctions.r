@@ -92,7 +92,7 @@ return(allpoints)
 
 
 ### Conduct Moran's I on residuals
-require(spdep)
+library(spdep, quietly = T)
 
 GetSubsampledMoranI <- function(x, niter){
 ## Sumsample large DF to increase runtime
@@ -104,12 +104,12 @@ if(nrow(maxentResiduals) > 100000){
 residualDFSimplified <- residualDF %>% 
     dplyr::select(longitude, latitude, residuals) %>% 
     distinct(longitude, latitude, .keep_all = T)
-coords <- coordinates(subSample[,c("longitude","latitude")])
+coords <- coordinates(residualDFSimplified[,c("longitude","latitude")])
 
 distances  <-  dnearneigh(coords, 5000, 100000) 
 ResidualWeights <- nb2listw(distances, style="B")
 
-moranOut <- moran.mc(subSample$residuals, 
+moranOut <- moran.mc(residualDFSimplified$residuals, 
     listw = ResidualWeights, 
     nsim = niter)
 

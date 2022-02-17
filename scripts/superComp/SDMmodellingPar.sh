@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --account=def-sapna # specify account
-#SBATCH --time=02:59:00      # time for operation to run 
+#SBATCH --time=04:59:00      # time for operation to run 
 #SBATCH --mem-per-cpu=12G    ## specify memory for operation
 #SBATCH --cpus-per-task=3   # Specify processors
 #SBATCH --mail-user=alex.filazzola@outlook.com   ## specify email for notification

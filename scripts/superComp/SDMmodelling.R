@@ -1,15 +1,15 @@
 ###### SDM modelling
 
 ## Libraries
-library(dplyr)
-library(tidyr)
-library(raster)
-library(rgdal)
-library(dismo)
-library(rgeos)
-library(rJava)
-library(ENMeval)
-library(rangeModelMetadata)
+library(dplyr, quietly = T)
+library(tidyr, quietly = T)
+library(raster, quietly = T)
+library(rgdal, quietly = T)
+library(dismo, quietly = T)
+library(rgeos, quietly = T)
+library(rJava, quietly = T)
+library(ENMeval, quietly = T)
+library(rangeModelMetadata, quietly = T)
 
 ## Set WD
 setwd("~/projects/def-sapna/afila/GreatUrbanShift")
@@ -102,6 +102,9 @@ partitionedData <- kfoldPartitionData(collinearVariablesClimate$presClim,
 tuneArgs <- list(fc = c("L", "Q", "P", "LQ","H","LQH","LQHP"), 
                   rm = seq(0.5, 3, 0.5))
 
+tuneArgs <- list(fc = c("L", "Q"), 
+                  rm = seq(0.5, 1, 0.5))
+
 ### Run MaxEnt
 max1 <- ENMevaluate(occ=partitionedData$trainingPresence,
                     bg.coords = partitionedData$trainingAbsence,
@@ -148,7 +151,7 @@ lapply(predictedCitiesList, function(j) {
 maxentResiduals <- GetMaxEntResiduals(partitionedData$trainingPresence,
   partitionedData$trainingAbsence, 
   max1@models[[bestMax]])
-outMoranDF <- GetSubsampledMoranI(maxentResiduals, niter = 999)
+outMoranDF <- GetSubsampledMoranI(maxentResiduals, niter = 99)
 
 
 ## create output dataframe
@@ -166,8 +169,8 @@ modelData[,"percentContribution"] <- paste0(varImp$percent.contribution, collaps
 modelData[,"Features"] <- as.character(modelOut[1,"fc"])
 modelData[,"Regularization"] <- as.character(modelOut[1,"rm"])
 modelData[,"AUCtrain"] <- as.character(modelOut[1,"auc.train"])
-modelData[,"MeanMoransObs"] <- mean(outMoranDF$MoransObs)
-modelData[,"MeanMoranPval"] <- mean(outMoranDF$MoransPval)
+modelData[,"MoranStat"] <- outMoranDF$MoransObs
+modelData[,"MoranPval"] <- outMoranDF$MoransPval
 
 
 ## save files
