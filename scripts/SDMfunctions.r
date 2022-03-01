@@ -1,16 +1,18 @@
 #### SDM functions
 ## A list of functions to facilitate processing SDM 
 
+
 ### Set raster grid for observations
-MakeEmptyGridResolution <- function(x, aggFactor){
-climateRasters[[1]]
-r0 <- raster(nrows = nrow(x),
-    ncols =  ncol(x),
-    ext = extent(x),
-    crs = crs(x))
+MakeEmptyGridResolution <- function(rasterIn, aggFactor){
+r0 <- rasterIn
 values(r0) <- 0
-rAggregated <- aggregate(r0, fact = aggFactor, fun = min)
+r1 <- raster(nrows = nrow(rasterIn)/aggFactor,
+    ncols =  ncol(rasterIn)/aggFactor,
+    ext = extent(rasterIn),
+    crs = crs(rasterIn))
+rAggregated <- resample(r0, r1, method = "bilinear")
 return(rAggregated)
+
 }
 
 
@@ -55,9 +57,9 @@ return(cbind(coords,variables))
 FindCollinearVariables <- function(occurrences, absences, climate){
 
 ## Pull climate data out of coordinates
-pres <- ExtractWithCoordinates(sp1, climateRasters)
+pres <- ExtractWithCoordinates(occurrences, climateRasters)
 names(pres)[1:2] <- c("longitude","latitude")
-abs <- ExtractWithCoordinates(backgr, climateRasters)
+abs <- ExtractWithCoordinates(absences, climateRasters)
 names(abs)[1:2] <- c("longitude","latitude")
 allClim <- rbind(pres, abs) %>% 
     dplyr::select(-longitude, -latitude) %>% 

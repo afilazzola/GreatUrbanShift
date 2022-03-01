@@ -94,20 +94,13 @@ bestClim <- climateRasters[[collinearVariablesClimate$selectVars]]
 
 ###### Conduct species distribution modelling
 
-## Partionined fully withheld
-partitionedData <- kfoldPartitionData(collinearVariablesClimate$presClim, 
-  collinearVariablesClimate$absClim)
-
 ## Select feature classes and regularization parameters for Maxent
 tuneArgs <- list(fc = c("L", "Q", "P", "LQ","H","LQH","LQHP"), 
                   rm = seq(0.5, 3, 0.5))
 
-tuneArgs <- list(fc = c("L", "Q"), 
-                  rm = seq(0.5, 1, 0.5))
-
 ### Run MaxEnt
-max1 <- ENMevaluate(occ=partitionedData$trainingPresence,
-                    bg.coords = partitionedData$trainingAbsence,
+max1 <- ENMevaluate(occ=collinearVariablesClimate$presClim,
+                    bg.coords = collinearVariablesClimate$absClim,
                     tune.args = tuneArgs, 
                     taxon.name=speciesName, ## add species name
                     progbar=F, 
@@ -122,10 +115,11 @@ varImp <- max1@variable.importance[bestMax] %>% data.frame()
 names(varImp) <- c("variable","percent.contribution","permutation.importance")
 
 ## find threshold
-evalOut <- dismo::evaluate(partitionedData$testingPresence[,c("longitude","latitude")], 
-  partitionedData$testingPresence[,c("longitude","latitude")],
+evalOut <- dismo::evaluate(collinearVariablesClimate$presClim[,c("longitude","latitude")], 
+  collinearVariablesClimate$absClim[,c("longitude","latitude")],
   max1@models[[bestMax]], bestClim)
 thresholdIdentified <- threshold(evalOut)
+
 
 ## predict species occurrences with each climate scenario
 predictedCitiesList <- lapply(climateList, function(j) {
@@ -147,13 +141,6 @@ lapply(predictedCitiesList, function(j) {
   row.names=FALSE)
 })
 
-## Check for spatial auto-correlation
-maxentResiduals <- GetMaxEntResiduals(partitionedData$trainingPresence,
-  partitionedData$trainingAbsence, 
-  max1@models[[bestMax]])
-outMoranDF <- GetSubsampledMoranI(maxentResiduals, niter = 99)
-
-
 ## create output dataframe
 modelData <- speciesInfo 
 modelData[,"fileName"] <- basename(speciesFilepath)
@@ -169,8 +156,6 @@ modelData[,"percentContribution"] <- paste0(varImp$percent.contribution, collaps
 modelData[,"Features"] <- as.character(modelOut[1,"fc"])
 modelData[,"Regularization"] <- as.character(modelOut[1,"rm"])
 modelData[,"AUCtrain"] <- as.character(modelOut[1,"auc.train"])
-modelData[,"MoranStat"] <- outMoranDF$MoransObs
-modelData[,"MoranPval"] <- outMoranDF$MoransPval
 
 
 ## save files

@@ -48,14 +48,14 @@ min(terrestrial$nobs)
 max(terrestrial$nobs)
 
 ## Look at predictions for cities
-futureclimate <- list.files("out//cityPredict//", full.names = T, pattern="Future")
+futureclimate <- list.files("out//cityPredict//", full.names = T, pattern="futureClimate")
 
 listFuture <- lapply(1:length(futureclimate), function(i)
   read.csv(futureclimate[i], stringsAsFactors = F)
 )
 allFuture <- do.call(rbind, listFuture)
 
-currentclimate <- list.files("out//cityPredict//", full.names = T, pattern="Current")
+currentclimate <- list.files("out//cityPredict//", full.names = T, pattern="currentClimate")
 
 listCurrent <- lapply(1:length(currentclimate), function(i)
   read.csv(currentclimate[i], stringsAsFactors = F)
@@ -65,14 +65,18 @@ allCurrent <- do.call(rbind, listCurrent)
 
 
 ## Combine future and current climate data frames
-allClimate <- allCurrent %>% dplyr::select(City, species, currentProb = meanProb) %>% left_join(allFuture) %>% 
-  mutate(changeProb =  meanProb - currentProb, changeProb= round(changeProb, 4)) %>%  ## log(future/current) = LRR change in predicted occurrence
-  filter(!is.na(SSP)) %>% filter(currentProb > 0.05)
-allClimate <- allClimate %>% filter(species %in% terrestrial$species) ## remove species that had low model AUC
+allClimate <- allCurrent %>% dplyr::select(City, species, currentProb = meanProb) %>%
+ left_join(allFuture) %>% 
+  mutate(changeProb =  meanProb - currentProb, changeProb= round(changeProb, 4)) %>%  
+  filter(!is.na(SSP)) 
+allClimate <- allClimate %>% 
+  filter(species %in% terrestrial$species) ## remove species that had low model AUC
 
 
 ## Species unique to single cities
-allClimate %>% group_by(species) %>% summarize(nCity = length(unique(City)), cityName=unique(City)) %>% filter(nCity==1)
+allClimate %>% group_by(species) %>% 
+  summarize(nCity = length(unique(City)), cityName=unique(City)) %>%
+  filter(nCity==1)
 
 ####### Define regions for cities that are most affected
 
@@ -81,22 +85,27 @@ cityStats <- read.csv("data//cityData//CityCharacteristics.csv") %>% dplyr::sele
 modelClimateCity <- merge(allClimate, cityStats, by="City")
 
 
-summarizedRegions <- modelClimateCity %>% group_by(ecozone, species, SSP, Year ) %>% summarize(diff=mean(changeProb))
+summarizedRegions <- modelClimateCity %>% 
+  group_by(ecozone, species, SSP ) %>%
+  summarize(diff=mean(changeProb))
 
 
 
-ggplot(data=summarizedRegions, aes(x=diff, y= ecozone, fill=ecozone)) + geom_density_ridges(na.rm=T, stat="binline") + theme_ridges() + 
- theme_classic() + ylab("Change in Predicted Occurrence") + scale_fill_manual(values=RColorBrewer::brewer.pal(n=7, "Dark2")) +
-  geom_hline(yintercept=0, lty=2) + geom_vline(xintercept = 0, lty=2) + facet_grid(Year~SSP)
+ggplot(data=summarizedRegions, aes(x=diff, y= ecozone, fill=ecozone)) + 
+geom_density_ridges(na.rm=T, stat="binline") + theme_ridges() + 
+ theme_classic() + ylab("Change in Predicted Occurrence") + 
+ scale_fill_manual(values=RColorBrewer::brewer.pal(n=7, "Dark2")) +
+  geom_hline(yintercept=0, lty=2) + geom_vline(xintercept = 0, lty=2) + 
+  facet_grid(~SSP)
 
 
 ### City map of globe
 averageCity <- modelClimateCity %>% filter(!is.infinite(changeProb)) %>%  
-  group_by(City, lat, lon,  SSP, Year ) %>% summarize(diff=mean(changeProb, na.rm=T))
+  group_by(City, lat, lon,  SSP ) %>% summarize(diff=mean(changeProb, na.rm=T))
 
 ## Take extreme year and discrete extremes
-averageExtreme <- data.frame(averageCity) %>% filter(Year=="2081-2100")
-averageExtreme[,"diffBin"] <- cut(averageExtreme$diff, breaks=seq(-0.5,0.2, by=0.1))
+averageExtreme <- data.frame(averageCity) 
+averageExtreme[,"diffBin"] <- cut(averageExtreme$diff, breaks=seq(-0.5,0.5, by=0.25))
 
 mp <- NULL
 mapWorld <- borders("world", colour="white", fill="gray75") # create a layer of borders
@@ -117,8 +126,9 @@ taxaClimate <- merge(allClimate, taxaInfo, by="species" )
 
 
 taxaClimateSimplified <- taxaClimate %>% 
-  filter(Year == "2081-2100" & SSP == "ssp585") 
-taxaClimateSimplified <- taxaClimateSimplified %>% group_by(Order) %>% mutate(medianOrder = median(changeProb, na.rm=T), nOrder=length(changeProb)) %>% 
+  filter(SSP == "ssp585") 
+taxaClimateSimplified <- taxaClimateSimplified %>% group_by(Order) %>% 
+mutate(medianOrder = median(changeProb, na.rm=T), nOrder=length(changeProb)) %>% 
   ungroup()  %>%  group_by(Class) %>% mutate(medianClass = median(changeProb, na.rm=T), nClass=length(changeProb)) 
 
 
@@ -208,9 +218,10 @@ ggplot(IUCNsummary, aes(x=redlistSimplified,y=diffProb, fill=SSP)) +
 
 
 ### Patterns of differences among cities
-meanCity <- taxaClimate %>% group_by(City, Year, SSP ) %>% summarize(avg= mean(changeProb)) %>% data.frame()
+meanCity <- taxaClimate %>% group_by(City, SSP ) %>% summarize(avg= mean(changeProb)) %>% data.frame()
 
-ggplot(meanCity, aes(x=reorder(City,avg), y=avg, color=SSP)) + geom_point(aes(shape=Year), size=2)  + 
+ggplot(meanCity, aes(x=reorder(City,avg), y=avg, color=SSP)) + 
+geom_point(size=2)  + 
   coord_flip() + theme_classic() + ylab("Change in predicted occurrence across all species") + xlab("") +
    scale_color_manual(values=c(RColorBrewer::brewer.pal(n=3, "Dark2"))) +
   geom_hline(yintercept=0, lty=2) + ylim(-0.4, 0.2)
