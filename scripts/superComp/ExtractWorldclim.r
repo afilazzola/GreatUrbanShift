@@ -6,6 +6,8 @@ library(dismo)
 ## Set WD
 setwd("~/projects/def-sapna/afila/GreatUrbanShift")
 
+set.seed(11)
+
 ### Create a CSV with all the future climates
 ## Load cities to examine and add buffer
 cities <- read.csv("data//CityList.csv")
@@ -40,8 +42,6 @@ ssps <- ifelse(grepl("bioc", basename(allClimate)), gsub(".*_", "", GCMSSP), "cu
 
 climateFileDF <- data.frame(filepaths = allClimate,
     climateType, gcms, ssps)
-
-futureDF <- subset(climateFileDF, climateType == "futureClimate")
 
 futureScenarios <- lapply(1:nrow(futureDF), function(j)  {
   

@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --account=def-sapna # specify account
 #SBATCH --ntasks=1    ## specify more nodes to be available
-#SBATCH --time=02:59:00         # time for operation to run 
-#SBATCH --mem=6G 				## specify memory for operation
+#SBATCH --time=00:59:00         # time for operation to run 
+#SBATCH --mem=16G 				## specify memory for operation
 #SBATCH --mail-user=alex.filazzola@outlook.com   ## specify email for notification
 #SBATCH --mail-type=BEGIN
 #SBATCH --mail-type=END
@@ -18,4 +18,7 @@ module load udunits
 module load r/4.1.0
 module load grass
 
-Rscript ~/projects/def-sapna/afila/GreatUrbanShift/scripts/ExtractFutureClimate.r
+Rscript ~/projects/def-sapna/afila/GreatUrbanShift/scripts/ExtractWorldclim.r
+
+
+scontrol update jobid=58351990 TimeLimit=01:00:00

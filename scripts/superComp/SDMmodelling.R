@@ -20,11 +20,10 @@ NApoly <- readOGR("data//CanUSA.shp")
 source("scripts//SDMfunctions.r")
 
 ## Load Climate
-climateFiles <- list.files("data//climateNA//", full.names = T)
+climateFiles <- list.files("data//worldclim30//", full.names = T)
 climateRasters <- stack(climateFiles)  
-names(climateRasters) <- gsub("Normal_1991_2020_", "", names(climateRasters) )
-climateRasters <- dropLayer(climateRasters, 
-  grep("MAR", names(climateRasters))) ## NA values in raster
+names(climateRasters) <- gsub("_", "", gsub(".*30s_", "", names(climateRasters) ))
+climateRasters <- crop(climateRasters, NApoly)
 
 ## Load species
 speciesFilepath <- commandArgs(trailingOnly = TRUE)
@@ -40,8 +39,9 @@ GCMclimate <- read.csv("data//futureGCMClimate.csv")
 climateList <- list(currentClimate, futureClimate, GCMclimate)
 climateList <- lapply(climateList, function(k) { ## Drop NA values
   k %>% 
-    dplyr::select(-MAR) %>% 
-    drop_na()
+    drop_na() %>% 
+    dplyr::select(-X, -optional) %>% 
+    rename(longitude = x1, latitude = x2)
 })
 
 ## Load cities to examine and add buffer
@@ -66,7 +66,7 @@ speciesName <- basename(speciesFilepath) %>% gsub(".csv", "", .) ## list species
 ## systematic sampling as the most effect form of bias correct https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0097122
 coordinates(sp1) <- ~decimalLongitude + decimalLatitude ## Transform occurrences to spdataframe
 proj4string(sp1) <- CRS("+proj=longlat +datum=WGS84")
-sp1 <- spTransform(sp1, crs(climateRasters))
+
 
 ## Spatial thinning to reduce bias
 emptyThinningGrid <- MakeEmptyGridResolution(climateRasters[[1]],
