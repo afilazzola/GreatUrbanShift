@@ -14,16 +14,17 @@ library(rangeModelMetadata, quietly = T)
 ## Set WD
 setwd("~/projects/def-sapna/afila/GreatUrbanShift")
 
-## Load NA polygon
-NApoly <- readOGR("data//CanUSA.shp")
-
 source("scripts//SDMfunctions.r")
 
 ## Load Climate
 climateFiles <- list.files("data//worldclim30//", full.names = T)
-climateRasters <- stack(climateFiles)  
+climateRasters <- terra::rast(climateFiles)  
 names(climateRasters) <- gsub("_", "", gsub(".*30s_", "", names(climateRasters) ))
-climateRasters <- crop(climateRasters, NApoly)
+
+## Load raster for thinning
+emptyThinningGrid <- MakeEmptyGridResolution(climateRasters[[1]],
+   aggFactor = 10) ## convert to 10x10 km
+emptyThinningGrid <- raster(emptyThinningGrid)
 
 ## Load species
 speciesFilepath <- commandArgs(trailingOnly = TRUE)
@@ -34,9 +35,8 @@ sppList <- read.csv("data//cityData//UpdatedSpeciesList.csv")
 
 ## load in current and future climate
 currentClimate <- read.csv("data//currentClimate.csv")
-futureClimate <- read.csv("data//futureClimate.csv")
 GCMclimate <- read.csv("data//futureGCMClimate.csv")
-climateList <- list(currentClimate, futureClimate, GCMclimate)
+climateList <- list(currentClimate, GCMclimate)
 climateList <- lapply(climateList, function(k) { ## Drop NA values
   k %>% 
     drop_na() %>% 
@@ -69,8 +69,6 @@ proj4string(sp1) <- CRS("+proj=longlat +datum=WGS84")
 
 
 ## Spatial thinning to reduce bias
-emptyThinningGrid <- MakeEmptyGridResolution(climateRasters[[1]],
-  aggFactor = 5) ## convert to 5x5 km
 sp1 <- ThinByGrid(sp1, emptyThinningGrid)
 
 ## Generate sample area for background points
@@ -81,8 +79,8 @@ crs(samplearea) <- crs(sp1)
 nbackgr <- ifelse(length(sp1) > 9999, length(sp1), 10000) ## 10k unless occurrences are more than 10k
 
 ####### Unable to use bias file method - restrict background points instead
-samplearea <- mask(climateRasters[[1]], samplearea)
-backgr <- randomPoints(samplearea, n=nbackgr, p =sp1)  %>% data.frame() ## sample points, exclude cells where presence occurs
+samplearea <- mask(climateRasters[[1]], terra::vect(samplearea))
+backgr <- terra::spatSample(samplearea, nbackgr, "random", na.rm = TRUE, xy = T, values = F) %>% data.frame()
 coordinates(backgr) <- ~x+y ## re-assign as spatial points
 proj4string(backgr)  <- crs(sp1) ## assign CRS
 backgr <- ThinByGrid(backgr, emptyThinningGrid)
@@ -99,14 +97,14 @@ tuneArgs <- list(fc = c("L", "Q", "P", "LQ","H","LQH","LQHP"),
                   rm = seq(0.5, 3, 0.5))
 
 ### Run MaxEnt
-max1 <- ENMevaluate(occ=collinearVariablesClimate$presClim,
+max1 <- ENMevaluate(occ = collinearVariablesClimate$presClim,
                     bg.coords = collinearVariablesClimate$absClim,
                     tune.args = tuneArgs, 
-                    taxon.name=speciesName, ## add species name
-                    progbar=F, 
+                    taxon.name = speciesName, ## add species name
+                    progbar = F, 
                     partitions = "block", # Conduct random spatial block CV https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210X.13107
-                    quiet=T, ## silence messages but not errors
-                    algorithm='maxent.jar')
+                    quiet = T, ## silence messages but not errors
+                    algorithm = 'maxent.jar')
 
 ## best model
 bestMax <- which.max(max1@results$cbi.val.avg)
@@ -171,7 +169,7 @@ rmm$authorship$rmmName  <- paste0("CUEFilazzolaAlessandro_2022_Maxent",speciesNa
 rmm$authorship$license  <- "CC BY-NC"
 rmm$data$occurrence$yearMin  <- "2000"
 rmm$data$occurrence$yearMax  <- "2021"
-rmm$model$selectionRules <- "lowest AICc, break ties with AUC" ## selection criteria for model
+rmm$model$selectionRules <- "Best Continuous Boyce Index" ## selection criteria for model
 rmm$model$finalModelSettings <- paste0(modelOut[1,"features"], modelOut[1,"rm"]) ## Best featureclass and RM
 rmm$code$software$platform <- toBibtex(citation())
 ## save meta-data

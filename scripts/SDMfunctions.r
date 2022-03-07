@@ -1,21 +1,16 @@
 #### SDM functions
 ## A list of functions to facilitate processing SDM 
 
-
 ### Set raster grid for observations
 MakeEmptyGridResolution <- function(rasterIn, aggFactor){
-r0 <- rasterIn
-values(r0) <- 0
-r1 <- raster(nrows = nrow(rasterIn)/aggFactor,
+r1 <- terra::rast(nrows = nrow(rasterIn)/aggFactor,
     ncols =  ncol(rasterIn)/aggFactor,
-    ext = extent(rasterIn),
+    ext = terra::ext(rasterIn),
     crs = crs(rasterIn))
-rAggregated <- resample(r0, r1, method = "bilinear")
-return(rAggregated)
+values(r1) <- 0
+return(r1)
 
 }
-
-
 
 ### Thin observations
 ThinByGrid <- function(occurrences, raster){
@@ -29,6 +24,41 @@ ThinByGrid <- function(occurrences, raster){
     return(thinnedPoints)
 }
 
+### Extract predictors with coordinates into DF
+ExtractWithCoordinates <- function(x, rasterstack){
+coords <- terra::vect(x)
+variables <- terra::extract(climateRasters, coords, xy = T)
+return(data.frame(variables))
+}
+
+
+### find co-linear variables
+FindCollinearVariables <- function(occurrences, absences, climate){
+
+## Pull climate data out of coordinates
+pres <- ExtractWithCoordinates(occurrences, climateRasters)
+pres <- pres %>% dplyr::select(-ID, longitude = x, latitude = y)
+abs <- ExtractWithCoordinates(absences, climateRasters)
+abs <- abs %>% dplyr::select(-ID, longitude = x, latitude = y)
+allClim <- rbind(pres, abs) %>% 
+    dplyr::select(-longitude, -latitude) %>% 
+    data.frame()
+
+## Check for covariance
+colin <- usdm::vifcor(allClim[,-ncol(allClim)])
+selectVars <-  colin@results$Variables
+
+## Drop collinear variables
+pres <- pres %>% dplyr::select(all_of(c("longitude","latitude",selectVars)))
+abs <- abs %>% dplyr::select(all_of(c("longitude","latitude",selectVars)))
+
+return(list(presClim = pres, absClim = abs, selectVars = selectVars))
+}
+
+
+
+
+###### Legacy functions
 
 ### Function to use Kfold partioninig into 10 groups
 kfoldPartitionData <- function(occurrences, absences){
@@ -45,36 +75,6 @@ names(returnList) <- c("testingPresence","trainingPresence","testingAbsence","tr
 return(returnList)
 }
 
-### Extract predictors with coordinates into DF
-ExtractWithCoordinates <- function(x, rasterstack){
-coords <- data.frame(coordinates(x))
-variables <- raster::extract(rasterstack, x)
-return(cbind(coords,variables))
-}
-
-
-### find co-linear variables
-FindCollinearVariables <- function(occurrences, absences, climate){
-
-## Pull climate data out of coordinates
-pres <- ExtractWithCoordinates(occurrences, climateRasters)
-names(pres)[1:2] <- c("longitude","latitude")
-abs <- ExtractWithCoordinates(absences, climateRasters)
-names(abs)[1:2] <- c("longitude","latitude")
-allClim <- rbind(pres, abs) %>% 
-    dplyr::select(-longitude, -latitude) %>% 
-    data.frame()
-
-## Check for covariance
-colin <- usdm::vifcor(allClim[,-ncol(allClim)])
-selectVars <-  colin@results$Variables
-
-## Drop collinear variables
-pres <- pres %>% dplyr::select(all_of(c("longitude","latitude",selectVars)))
-abs <- abs %>% dplyr::select(all_of(c("longitude","latitude",selectVars)))
-
-return(list(presClim = pres, absClim = abs, selectVars = selectVars))
-}
 
 
 ## Standard error
@@ -121,4 +121,5 @@ moranOutDF <- data.frame(
 )
 return(moranOutDF)
 }
+
 
