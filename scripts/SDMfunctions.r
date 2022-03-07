@@ -27,7 +27,7 @@ ThinByGrid <- function(occurrences, raster){
 ### Extract predictors with coordinates into DF
 ExtractWithCoordinates <- function(x, rasterstack){
 coords <- terra::vect(x)
-variables <- terra::extract(climateRasters, coords, xy = T)
+variables <- terra::extract(rasterstack, coords, xy = T)
 return(data.frame(variables))
 }
 

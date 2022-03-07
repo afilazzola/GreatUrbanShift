@@ -23,7 +23,7 @@ names(climateRasters) <- gsub("_", "", gsub(".*30s_", "", names(climateRasters) 
 
 ## Load raster for thinning
 emptyThinningGrid <- MakeEmptyGridResolution(climateRasters[[1]],
-   aggFactor = 10) ## convert to 10x10 km
+   aggFactor = 5) ## convert to 5x5km
 emptyThinningGrid <- raster(emptyThinningGrid)
 
 ## Load species
@@ -34,13 +34,13 @@ speciesFilepath <- commandArgs(trailingOnly = TRUE)
 sppList <- read.csv("data//cityData//UpdatedSpeciesList.csv")
 
 ## load in current and future climate
-currentClimate <- read.csv("data//currentClimate.csv")
-GCMclimate <- read.csv("data//futureGCMClimate.csv")
-climateList <- list(currentClimate, GCMclimate)
+currentClimate <- read.csv("data//currentClimate.csv") %>% dplyr::select(-X, -optional) 
+futureClimate <- read.csv("data//futureClimate.csv") %>% dplyr::select(-X) 
+GCMclimate <- read.csv("data//futureGCMClimate.csv") %>% dplyr::select(-X, -optional) 
+climateList <- list(currentClimate, futureClimate, GCMclimate)
 climateList <- lapply(climateList, function(k) { ## Drop NA values
   k %>% 
     drop_na() %>% 
-    dplyr::select(-X, -optional) %>% 
     rename(longitude = x1, latitude = x2)
 })
 

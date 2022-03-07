@@ -12,10 +12,10 @@
 #SBATCH --output=ClimateExtract.%J_%a.stderr
 
 ## Load modules
-module load StdEnv/2020  gcc/9.3.0 r-bundle-bioconductor/3.12
+module load StdEnv/2020  gcc/9.3.0 r-bundle-bioconductor/3.14
 module load netcdf
 module load udunits
-module load r/4.1.0
+module load r/4.1.2
 module load grass
 
 Rscript ~/projects/def-sapna/afila/GreatUrbanShift/scripts/ExtractWorldclim.r
