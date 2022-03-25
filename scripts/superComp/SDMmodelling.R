@@ -17,9 +17,11 @@ setwd("~/projects/def-sapna/afila/GreatUrbanShift")
 source("scripts//SDMfunctions.r")
 
 ## Load Climate
-climateFiles <- list.files("data//worldclim30//", full.names = T)
+climateFiles <- list.files("data//climateNA//", full.names = T)
 climateRasters <- terra::rast(climateFiles)  
-names(climateRasters) <- gsub("_", "", gsub(".*30s_", "", names(climateRasters) ))
+names(climateRasters) <- gsub("Normal_1991_2020_", "", names(climateRasters) )
+climateRasters <- climateRasters[[grep("MAR", names(climateRasters), invert =T )]]
+
 
 ## Load raster for thinning
 emptyThinningGrid <- MakeEmptyGridResolution(climateRasters[[1]],
@@ -66,7 +68,6 @@ speciesName <- basename(speciesFilepath) %>% gsub(".csv", "", .) ## list species
 ## systematic sampling as the most effect form of bias correct https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0097122
 coordinates(sp1) <- ~decimalLongitude + decimalLatitude ## Transform occurrences to spdataframe
 proj4string(sp1) <- CRS("+proj=longlat +datum=WGS84")
-
 
 ## Spatial thinning to reduce bias
 sp1 <- ThinByGrid(sp1, emptyThinningGrid)

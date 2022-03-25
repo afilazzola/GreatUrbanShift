@@ -4,6 +4,7 @@
 library(tidyverse)
 library(ggridges)
 
+
 ## Look at the model results
 models <- list.files("out//models//", full.names = T)
 
@@ -17,9 +18,7 @@ allModels <- do.call(plyr::rbind.fill, listModels)
 ### Model checks to ensure none are poor qualifiers
 hist(allModels$AUCtrain)
 hist(allModels$AUCtest)
-
-## Drop models where AUC < 0.7
-bestModels <- allModels %>% filter(AUCtest > 0.7)
+bestModels <- allModels %>% filter(AUCtest > 0.5) %>% filter(nobs > 9) ## Drop models where AUC < 0.7
 ggplot(bestModels, aes(x=AUCtest, y=AUCtrain)) + geom_point()
 
 ## Correct missing taxa in Arachnids and filter out aquatic species
@@ -48,12 +47,16 @@ min(terrestrial$nobs)
 max(terrestrial$nobs)
 
 ## Look at predictions for cities
-futureclimate <- list.files("out//cityPredict//", full.names = T, pattern="futureClimate")
+allClimates <- list.files("out//cityPredict//", full.names = T, pattern="futureClimate")
 
-listFuture <- lapply(1:length(futureclimate), function(i)
-  read.csv(futureclimate[i], stringsAsFactors = F)
+listFuture <- lapply(1:length(allClimates), function(i)
+  read.csv(allClimates[i], stringsAsFactors = F)
 )
 allFuture <- do.call(rbind, listFuture)
+allFuture <- allFuture %>% 
+  group_by(City, SSP, Climate, species) %>% 
+  summarize(meanProb = mean(meanProb, na.rm = T),
+    sdProb = mean(sdProb, na.rm = T))
 
 currentclimate <- list.files("out//cityPredict//", full.names = T, pattern="currentClimate")
 
@@ -66,57 +69,42 @@ allCurrent <- do.call(rbind, listCurrent)
 
 ## Combine future and current climate data frames
 allClimate <- allCurrent %>% dplyr::select(City, species, currentProb = meanProb) %>%
+  # filter(currentProb != 0) %>% 
  left_join(allFuture) %>% 
   mutate(changeProb =  meanProb - currentProb, changeProb= round(changeProb, 4)) %>%  
-  filter(!is.na(SSP)) 
+  filter(!is.na(SSP)) %>% filter(changeProb != 0)
 allClimate <- allClimate %>% 
   filter(species %in% terrestrial$species) ## remove species that had low model AUC
 
 
-## Species unique to single cities
-allClimate %>% group_by(species) %>% 
-  summarize(nCity = length(unique(City)), cityName=unique(City)) %>%
-  filter(nCity==1)
+newSpecies <- allClimate %>% filter(currentProb == 0) 
+lostSpecies <- allClimate %>% filter(meanProb == 0) 
 
-####### Define regions for cities that are most affected
-
-cityStats <- read.csv("data//cityData//CityCharacteristics.csv") %>% dplyr::select(City = CityName, ecozone = NA_L1NAME, bio1:bio15, lon, lat)
-
+####### Plot map of general patterns
+## Join city characteristics
+cityStats <- read.csv("data//cityData//CityCharacteristics.csv") %>% 
+  dplyr::select(City = CityName, ecozone = NA_L1NAME, bio1:bio15, lon, lat)
 modelClimateCity <- merge(allClimate, cityStats, by="City")
 
-
-summarizedRegions <- modelClimateCity %>% 
-  group_by(ecozone, species, SSP ) %>%
-  summarize(diff=mean(changeProb))
-
-
-
-ggplot(data=summarizedRegions, aes(x=diff, y= ecozone, fill=ecozone)) + 
-geom_density_ridges(na.rm=T, stat="binline") + theme_ridges() + 
- theme_classic() + ylab("Change in Predicted Occurrence") + 
- scale_fill_manual(values=RColorBrewer::brewer.pal(n=7, "Dark2")) +
-  geom_hline(yintercept=0, lty=2) + geom_vline(xintercept = 0, lty=2) + 
-  facet_grid(~SSP)
-
-
-### City map of globe
 averageCity <- modelClimateCity %>% filter(!is.infinite(changeProb)) %>%  
-  group_by(City, lat, lon,  SSP ) %>% summarize(diff=mean(changeProb, na.rm=T))
+  group_by(City, lat, lon,  SSP ) %>% summarize(diff=mean(changeProb, na.rm=T)) %>% 
+  filter(SSP == "ssp585") 
 
 ## Take extreme year and discrete extremes
 averageExtreme <- data.frame(averageCity) 
-averageExtreme[,"diffBin"] <- cut(averageExtreme$diff, breaks=seq(-0.5,0.5, by=0.25))
+averageExtreme[,"diffBin"] <- cut(averageExtreme$diff, breaks=seq(-0.5,0.5, by=0.1))
 
 mp <- NULL
-mapWorld <- borders("world", colour="white", fill="gray75") # create a layer of borders
+mapWorld <- borders("world", colour="black", fill="gray75") # create a layer of borders
 mp <- ggplot() + theme_classic()+  mapWorld + xlim(-180,-30) + ylim(-20, 90)
-RColorBrewer::brewer.pal(n=7, "RdYlBu")
 
 mp <- mp+ geom_point(data=averageExtreme , aes(x=lon, y=lat, fill=diffBin),  size=3, pch=21) +
- ylab("Latitude") + xlab("Longitude")  + scale_fill_manual(values=c(RColorBrewer::brewer.pal(n=9, "RdYlBu")))
+ ylab("Latitude") + xlab("Longitude")  + scale_fill_manual(values=c(RColorBrewer::brewer.pal(n=8, "RdYlBu")))
 mp
 
-
+pdf("Figure1.pdf", useDingbats = F, width = 10, height = 8)
+mp
+dev.off()
 
 ##### Taxa plot
 ## Differences in taxa
@@ -126,34 +114,44 @@ taxaClimate <- merge(allClimate, taxaInfo, by="species" )
 
 
 taxaClimateSimplified <- taxaClimate %>% 
-  filter(SSP == "ssp585") 
+  filter(changeProb != 0 ) %>% 
+  filter(SSP == "ssp585")
 taxaClimateSimplified <- taxaClimateSimplified %>% group_by(Order) %>% 
 mutate(medianOrder = median(changeProb, na.rm=T), nOrder=length(changeProb)) %>% 
   ungroup()  %>%  group_by(Class) %>% mutate(medianClass = median(changeProb, na.rm=T), nClass=length(changeProb)) 
 
 
+
 ## Simple phylum plot
-ggplot(taxaClimateSimplified,
+taxaPlot <- ggplot(taxaClimateSimplified,
       aes(y=Class, x= changeProb, fill=Class)) + 
-  geom_density_ridges2(scale = 0.9, rel_min_height = 0.01) +
+  geom_density_ridges2(scale = 0.8, rel_min_height = 0.05) +
   theme_classic() + xlab("Difference in Predicted Occurrence") +
-  geom_hline(yintercept=0, lty=2) + xlim(-1,1) +
+  geom_hline(yintercept=0, lty=2) + xlim(-1,1 ) +
   scale_fill_manual(values=c(RColorBrewer::brewer.pal(n=12, "Paired"), "black")) +
   geom_vline(xintercept = 0, lty=2)  + theme(text = element_text(size=24), legend.position = "none")
+taxaPlot
+
 
 ## N per grouping
-taxaClimateSimplified %>%
+taxaClimate %>%
+    filter(SSP == "ssp245") %>% 
     group_by(Class) %>% summarize(nSpp = length(unique(species)), nObs=length(species), nCityObs = nObs/nSpp)
 
 
 ### Extremes among taxa
-extremePatterns <- taxaClimateSimplified %>%
-  filter(Class == "Mammalia") %>% 
-  group_by(species) %>% 
-  summarize(avgChangeProb = mean(changeProb), nSpp = length(unique(species))) %>% 
-  arrange(avgChangeProb) %>% data.frame()
-extremePatterns
-# write.csv(extremePatterns, "extremePatterns.csv", row.names=F)
+extremeFamilies <- taxaClimateSimplified %>% 
+  filter(Class %in% c("Reptilia","Mammalia","Amphibia", "Gastropoda")) %>% 
+  group_by(Class, Family) %>% 
+  summarize(avgChangeProb = mean(changeProb), nSpp = length(unique(species)))  %>% 
+  slice(which(avgChangeProb == max(avgChangeProb) | avgChangeProb == min(avgChangeProb) |  nSpp == max(nSpp))) 
+
+extremeOrders <- taxaClimateSimplified %>% 
+  filter(!(Class %in% c("Reptilia","Mammalia","Amphibia"))) %>% 
+  group_by(Class, Order) %>% 
+  summarize(avgChangeProb = mean(changeProb), nSpp = length(unique(species)))  %>% 
+  slice(which(avgChangeProb == max(avgChangeProb) | avgChangeProb == min(avgChangeProb) |  nSpp == max(nSpp))) 
+
 
 
 ### Bee declines in Raleigh
@@ -187,14 +185,13 @@ redListcat <- data.frame(redlistCategory = c("Critically Endangered","Endangered
 IUCNclimate <- merge(IUCNclimate, redListcat)
 
 se <- function(x) { sd(x)/ sqrt(length(x))}
-IUCNsummary <- IUCNclimate %>% group_by(Year, SSP, redlistSimplified) %>% filter(!is.infinite(changeProb)) %>% 
+IUCNsummary <- IUCNclimate %>% group_by(SSP, redlistSimplified) %>% filter(!is.infinite(changeProb)) %>% 
   filter(!is.na(redlistCategory)) %>% filter(redlistSimplified != "Data Deficient") %>% 
     summarize(diffProb = mean(changeProb, na.rm=T), n=length(unique(species)), error=se(changeProb)) %>% arrange(diffProb) %>% 
   data.frame()
 
 ## Test if at-risk species more likely to decline
 IUCNmeanSpp <- IUCNclimate %>%
-  filter(SSP == "ssp585" & Year == "2081-2100") %>% 
   filter(!is.infinite(changeProb)) %>% 
   filter(!is.na(redlistCategory)) %>% 
   filter(redlistSimplified != "Data Deficient")  %>% 
@@ -208,9 +205,9 @@ t.test(diffProb ~ redlistSimplified, data=IUCNmeanSpp)
 
 
 ggplot(IUCNsummary, aes(x=redlistSimplified,y=diffProb, fill=SSP)) +
-  geom_bar(stat="identity", position="dodge2") + facet_grid(~Year) +
+  geom_bar(stat="identity", position="dodge2")  +
    theme_classic() + geom_errorbar(aes(x=redlistSimplified, ymin=diffProb-error, ymax=diffProb+error), position="dodge2", width=1) + 
-  scale_fill_manual(values = c("#E69F00", "#56B4E9")) +
+  scale_fill_manual(values = c("#E69F00", "#56B4E9","#505050")) +
   geom_hline(yintercept=0, lty=2) +
   ylab("Change in predicted occurrence (LRR)") + xlab("")
 
@@ -224,7 +221,7 @@ ggplot(meanCity, aes(x=reorder(City,avg), y=avg, color=SSP)) +
 geom_point(size=2)  + 
   coord_flip() + theme_classic() + ylab("Change in predicted occurrence across all species") + xlab("") +
    scale_color_manual(values=c(RColorBrewer::brewer.pal(n=3, "Dark2"))) +
-  geom_hline(yintercept=0, lty=2) + ylim(-0.4, 0.2)
+  geom_hline(yintercept=0, lty=2) + ylim(-0.4, 0.4)
 
 ## Extreme cities
 extremeCities <- taxaClimate %>% filter(City == "Mesa" | City == "San Francisco") %>% filter(SSP=="ssp585" & Year == "2081-2100")
@@ -258,14 +255,14 @@ taxaClimateSimplified %>% filter(Order == "Anseriformes") %>% summarize(futureDi
 #### Richness per city
 
 ## Calculate species richness per 
-meanRichness <- allClimate %>% group_by(SSP, Year, City) %>% 
+meanRichness <- allClimate %>% group_by(SSP,  City) %>% 
   summarize(currentRichness = sum(currentProb >0.05), futureRichness = sum(meanProb >0.05)) %>% 
   mutate(diffRichness = (futureRichness - currentRichness)/currentRichness) %>% 
   data.frame() 
 
 
 ## plot the patterns in richness
-ggplot(meanRichness %>% filter(SSP=="ssp126" & Year=="2041-2060"), aes(x=City, y=currentRichness, fill=City)) + 
+ggplot(meanRichness %>% filter(SSP=="ssp126"), aes(x=City, y=currentRichness, fill=City)) + 
   geom_bar(stat="identity") + 
   theme_classic() + coord_flip() + ylab("Number of species predicted to occur") + scale_fill_manual(values=rep(c("#E69F00", "#56B4E9"),30)) +
   theme(legend.position = "none") + xlab("")
@@ -274,7 +271,7 @@ write.csv(meanRichness, "appendix//cityRichness.csv",row.names=FALSE)
 meanRichness %>% group_by(SSP, Year) %>% summarize(avgDiff = mean(diffRichness))
 
 ## plot the change in richness for the future
-ggplot(meanRichness , aes(x=City, y=diffRichness*100, fill=Year)) + 
+ggplot(meanRichness , aes(x=City, y=diffRichness*100)) + 
   geom_bar(stat="identity", position="dodge2") + facet_grid(~SSP) + 
   theme_classic() + coord_flip() + ylab("Percent change in species richness") + scale_fill_manual(values=rep(c("#E69F00", "#56B4E9"),30)) +
   theme(legend.position = "top") + xlab("")
@@ -339,7 +336,7 @@ ggplot(MeanDiff, aes(x=Population , y=perChange)) +
   theme_classic() + scale_fill_brewer(palette="YlOrRd") +
   xlab("Human population (log-scaled)") + ylab("Percent change in contemporary richness") +
   geom_errorbar(aes(x= Population, ymin=ymin, ymax=ymax), size=1.4) +
-  geom_label( aes(label=CityCode))  + scale_x_log10() + ylim( -0.5, -0.2)
+  geom_label( aes(label=CityCode))  + scale_x_log10() + ylim( -0.5, 0.5)
 
 
 cor.test(MeanDiff$Population, MeanDiff$perChange)
