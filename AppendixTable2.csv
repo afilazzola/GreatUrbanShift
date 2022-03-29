@@ -1,0 +1,169 @@
+"SSP","City","gains","losses","noChanges","HistoricSpecies"
+"ssp126","Albuquerque",33,39,186,225
+"ssp245","Albuquerque",60,51,174,225
+"ssp585","Albuquerque",83,64,161,225
+"ssp126","Atlanta",28,451,297,748
+"ssp245","Atlanta",83,427,321,748
+"ssp585","Atlanta",229,381,367,748
+"ssp126","Austin",28,225,701,926
+"ssp245","Austin",47,255,671,926
+"ssp585","Austin",75,324,602,926
+"ssp126","Baltimore",96,176,950,1126
+"ssp245","Baltimore",157,245,881,1126
+"ssp585","Baltimore",244,340,786,1126
+"ssp126","Boston",105,59,1048,1107
+"ssp245","Boston",152,110,997,1107
+"ssp585","Boston",222,220,887,1107
+"ssp126","Calgary",139,38,163,201
+"ssp245","Calgary",202,48,153,201
+"ssp585","Calgary",354,79,122,201
+"ssp126","Charlotte",42,322,446,768
+"ssp245","Charlotte",119,282,486,768
+"ssp585","Charlotte",251,310,458,768
+"ssp126","Chicago",136,169,862,1031
+"ssp245","Chicago",218,209,822,1031
+"ssp585","Chicago",327,319,712,1031
+"ssp126","Colorado Springs",65,41,375,416
+"ssp245","Colorado Springs",107,75,341,416
+"ssp585","Colorado Springs",186,127,289,416
+"ssp126","Columbus",88,322,462,784
+"ssp245","Columbus",187,325,459,784
+"ssp585","Columbus",311,373,411,784
+"ssp126","Dallas",76,196,723,919
+"ssp245","Dallas",101,218,701,919
+"ssp585","Dallas",143,289,630,919
+"ssp126","Denver",51,63,240,303
+"ssp245","Denver",96,85,218,303
+"ssp585","Denver",148,120,183,303
+"ssp126","Detroit",148,141,873,1014
+"ssp245","Detroit",222,191,823,1014
+"ssp585","Detroit",341,293,721,1014
+"ssp126","Edmonton",152,22,117,139
+"ssp245","Edmonton",264,32,107,139
+"ssp585","Edmonton",412,54,85,139
+"ssp126","El Paso",38,56,186,242
+"ssp245","El Paso",59,69,173,242
+"ssp585","El Paso",98,87,155,242
+"ssp126","Fort Worth",79,210,704,914
+"ssp245","Fort Worth",106,226,688,914
+"ssp585","Fort Worth",144,297,617,914
+"ssp126","Fresno",48,80,435,515
+"ssp245","Fresno",95,71,444,515
+"ssp585","Fresno",149,89,426,515
+"ssp126","Halifax",216,19,687,706
+"ssp245","Halifax",317,30,676,706
+"ssp585","Halifax",410,70,636,706
+"ssp126","Hamilton",147,56,947,1003
+"ssp245","Hamilton",237,97,906,1003
+"ssp585","Hamilton",320,206,797,1003
+"ssp126","Houston",79,125,952,1077
+"ssp245","Houston",121,148,929,1077
+"ssp585","Houston",157,204,873,1077
+"ssp126","Indianapolis",134,274,522,796
+"ssp245","Indianapolis",206,311,485,796
+"ssp585","Indianapolis",323,362,434,796
+"ssp126","Jacksonville",61,96,918,1014
+"ssp245","Jacksonville",117,131,883,1014
+"ssp585","Jacksonville",191,193,821,1014
+"ssp126","Kansas City",229,148,504,652
+"ssp245","Kansas City",291,169,483,652
+"ssp585","Kansas City",382,210,442,652
+"ssp126","Las Vegas",24,63,240,303
+"ssp245","Las Vegas",49,63,240,303
+"ssp585","Las Vegas",121,80,223,303
+"ssp126","Long Beach",42,169,1094,1263
+"ssp245","Long Beach",52,194,1069,1263
+"ssp585","Long Beach",89,306,957,1263
+"ssp126","Los Angeles",42,158,1093,1251
+"ssp245","Los Angeles",55,192,1059,1251
+"ssp585","Los Angeles",79,298,953,1251
+"ssp126","Memphis",125,122,385,507
+"ssp245","Memphis",219,106,401,507
+"ssp585","Memphis",287,145,362,507
+"ssp126","Mesa",19,77,311,388
+"ssp245","Mesa",40,75,313,388
+"ssp585","Mesa",95,81,307,388
+"ssp126","Miami",33,90,1106,1196
+"ssp245","Miami",88,88,1108,1196
+"ssp585","Miami",148,150,1046,1196
+"ssp126","Milwaukee",194,119,729,848
+"ssp245","Milwaukee",292,157,691,848
+"ssp585","Milwaukee",411,259,589,848
+"ssp126","Minneapolis",175,158,394,552
+"ssp245","Minneapolis",265,151,401,552
+"ssp585","Minneapolis",379,196,356,552
+"ssp126","Montréal",188,35,649,684
+"ssp245","Montréal",314,69,615,684
+"ssp585","Montréal",496,144,540,684
+"ssp126","Nashville",76,171,281,452
+"ssp245","Nashville",215,157,295,452
+"ssp585","Nashville",296,189,263,452
+"ssp126","New York",61,114,1053,1167
+"ssp245","New York",109,189,978,1167
+"ssp585","New York",240,274,893,1167
+"ssp126","Oakland",72,70,1324,1394
+"ssp245","Oakland",109,107,1287,1394
+"ssp585","Oakland",145,182,1212,1394
+"ssp126","Oklahoma City",153,145,448,593
+"ssp245","Oklahoma City",198,155,438,593
+"ssp585","Oklahoma City",284,169,424,593
+"ssp126","Omaha",225,112,301,413
+"ssp245","Omaha",297,122,291,413
+"ssp585","Omaha",397,152,261,413
+"ssp126","Ottawa - Gatineau",235,26,597,623
+"ssp245","Ottawa - Gatineau",347,58,565,623
+"ssp585","Ottawa - Gatineau",521,134,489,623
+"ssp126","Philadelphia",91,148,932,1080
+"ssp245","Philadelphia",150,202,878,1080
+"ssp585","Philadelphia",256,300,780,1080
+"ssp126","Phoenix",28,78,284,362
+"ssp245","Phoenix",53,62,300,362
+"ssp585","Phoenix",110,75,287,362
+"ssp126","Portland",86,83,1183,1266
+"ssp245","Portland",153,131,1135,1266
+"ssp585","Portland",231,221,1045,1266
+"ssp126","Québec",361,8,458,466
+"ssp245","Québec",485,15,451,466
+"ssp585","Québec",649,58,408,466
+"ssp126","Raleigh",46,363,496,859
+"ssp245","Raleigh",124,313,546,859
+"ssp585","Raleigh",240,346,513,859
+"ssp126","Sacramento",66,123,659,782
+"ssp245","Sacramento",105,135,647,782
+"ssp585","Sacramento",122,170,612,782
+"ssp126","San Antonio",38,232,632,864
+"ssp245","San Antonio",58,270,594,864
+"ssp585","San Antonio",81,323,541,864
+"ssp126","San Diego",31,128,1219,1347
+"ssp245","San Diego",47,178,1169,1347
+"ssp585","San Diego",73,303,1044,1347
+"ssp126","San Francisco",75,42,1353,1395
+"ssp245","San Francisco",92,51,1344,1395
+"ssp585","San Francisco",164,94,1301,1395
+"ssp126","San Jose",59,136,975,1111
+"ssp245","San Jose",122,161,950,1111
+"ssp585","San Jose",166,220,891,1111
+"ssp126","Seattle",110,79,1241,1320
+"ssp245","Seattle",178,142,1178,1320
+"ssp585","Seattle",266,233,1087,1320
+"ssp126","Toronto",159,40,848,888
+"ssp245","Toronto",246,94,794,888
+"ssp585","Toronto",360,195,693,888
+"ssp126","Tucson",37,42,320,362
+"ssp245","Tucson",79,55,307,362
+"ssp585","Tucson",132,84,278,362
+"ssp126","Tulsa",221,137,474,611
+"ssp245","Tulsa",285,144,467,611
+"ssp585","Tulsa",325,187,424,611
+"ssp126","Vancouver",119,38,1307,1345
+"ssp245","Vancouver",192,82,1263,1345
+"ssp585","Vancouver",272,185,1160,1345
+"ssp126","Virginia Beach",78,147,1002,1149
+"ssp245","Virginia Beach",168,203,946,1149
+"ssp585","Virginia Beach",257,286,863,1149
+"ssp126","Washington",83,270,760,1030
+"ssp245","Washington",174,292,738,1030
+"ssp585","Washington",265,375,655,1030
+"ssp126","Winnipeg",164,31,118,149
+"ssp245","Winnipeg",273,34,115,149
+"ssp585","Winnipeg",452,50,99,149

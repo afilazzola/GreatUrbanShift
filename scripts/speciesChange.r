@@ -45,6 +45,7 @@ median(terrestrial$nobs) ## average number of observations per species
 sd(terrestrial$nobs)/sqrt(nrow(terrestrial)) ## Error
 min(terrestrial$nobs)
 max(terrestrial$nobs)
+length(unique(terrestrial$species))
 
 ## Look at predictions for cities
 allClimates <- list.files("out//cityPredict//", full.names = T, pattern="futureClimate")
@@ -165,24 +166,60 @@ futureSpecies <- taxaClimate %>%
 extremeFamilies <- taxaClimateSimplified %>% 
   filter(Class %in% c("Reptilia","Mammalia","Amphibia", "Gastropoda")) %>% 
   group_by(Class, Family) %>% 
-  summarize(taxaChange = mean(netCities), nSpp = length(unique(species)))  %>% 
+  summarize(taxaChange = mean(netCities), nSpp = length(unique(species)), currentCity = mean(currentCities))  %>% 
   filter(nSpp > 1) %>% 
-  slice(which(taxaChange == max(taxaChange) | taxaChange == min(taxaChange) |  nSpp == max(nSpp))) 
+  slice(which(taxaChange == max(taxaChange) | taxaChange == min(taxaChange) |  nSpp == max(nSpp))) %>% 
+  mutate(propCityChange = taxaChange / currentCity)
 
 extremeOrders <- taxaClimateSimplified %>% 
   filter(!(Class %in% c("Reptilia","Mammalia","Amphibia"))) %>% 
   group_by(Class, Order) %>% 
-  summarize(taxaChange = round(mean(netCities),3), nSpp = length(unique(species)))  %>% 
+  summarize(taxaChange = round(mean(netCities),3), nSpp = length(unique(species)), currentCity = mean(currentCities))  %>% 
   filter(nSpp > 1) %>% 
-  slice(which(taxaChange == max(taxaChange) | taxaChange == min(taxaChange) |  nSpp == max(nSpp))) 
+  slice(which(taxaChange == max(taxaChange) | taxaChange == min(taxaChange) |  nSpp == max(nSpp))) %>% 
+  mutate(propCityChange = taxaChange / currentCity)
 
 taxaClimateSimplified %>% 
   filter(!(Class %in% c("Reptilia","Mammalia","Amphibia"))) %>% 
   group_by(Class, Order) %>% 
-  summarize(taxaChange = round(mean(netCities),3), nSpp = length(unique(species))) %>% 
+  summarize(taxaChange = round(mean(netCities),3), nSpp = length(unique(species)), currentCity = mean(currentCities)) %>% 
   filter(Order == "Hymenoptera")
 
+taxaClimateSimplified %>%  filter(Class == "Clitellata")
 
+classSummary <- taxaClimateSimplified %>% 
+  group_by(Class)  %>% 
+  summarize(taxaChange = mean(netCities), nSpp = length(unique(species)), currentCity = mean(currentCities))
+
+## Number of no changes
+speciesChanges <- taxaClimateSimplified %>% 
+  mutate(noChange = currentCities == futureCities)
+sum(speciesChanges$netCities < 0) / nrow(speciesChanges)
+sum(speciesChanges$netCities > 0) / nrow(speciesChanges)
+
+
+classSummary <- taxaClimateSimplified %>% 
+  filter(Class %in% c("Aves","Insecta")) %>% 
+  group_by(Class)  %>% 
+  summarize(increases = sum(netCities > 0), losses = sum(netCities < 0))
+
+BeesNA <- taxaClimateSimplified %>% filter(Order=="Hymenoptera") %>% 
+  # filter(City=="Raleigh") %>%  
+  filter(Family %in% c("Andrenidae","Apidae","Collectidae","Hallictidae","Megachilidae","Melittidae","Stenotritidae")) %>%  ## bee families
+  summarize(avg=mean(netCities), currentCities = mean(currentCities), propChange = avg/currentCities)
+
+
+
+cityChange <- allClimate %>%
+left_join(taxaInfo, by="species" ) %>% 
+filter(Order=="Hymenoptera") %>% 
+filter(City=="Raleigh") %>%  
+filter(Family %in% c("Andrenidae","Apidae","Collectidae","Hallictidae","Megachilidae","Melittidae","Stenotritidae")) %>% 
+    left_join(cityStats) %>% 
+    group_by(City, lat, lon, SSP) %>% 
+    summarize(gains = sum(gain), losses = sum(loss),
+     noChanges = sum(noChange), currentSpp = sum(currentOcc)) %>% 
+    mutate(perChange = (gains - losses) / currentSpp)
 
 ##### IUCN Comparison
 
@@ -214,6 +251,7 @@ ggsave("Figure3.pdf", IUCNplot, width = 10, height = 7)
 ### Models to test for differences
 library(MASS)
 library(emmeans)
+
 ## At-risk
 m1 <- glm.nb(value ~ change * SSP, 
   data = IUCNsummary %>% filter(redlistSimplified == "At-risk"))
@@ -284,3 +322,11 @@ RelativeChangePlot <- ggplot(comparisonToCurrent , aes(x = currentSpp, y = value
  geom_line(data = predLosses, aes(x = currentSpp, y= fit , fill = NA), color = colours[6])
 RelativeChangePlot
 ggsave("Figure5.pdf", RelativeChangePlot, width = 9, height = 7)
+
+
+
+### Appendix Table
+ExtendedData2 <- cityChange %>% 
+  ungroup() %>% 
+  dplyr::select(SSP, City,  gains, losses, noChanges, HistoricSpecies = currentSpp)
+write.csv(ExtendedData2, "AppendixTable2.csv", row.names=F)

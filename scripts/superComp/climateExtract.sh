@@ -19,6 +19,3 @@ module load r/4.1.2
 module load grass
 
 Rscript ~/projects/def-sapna/afila/GreatUrbanShift/scripts/ExtractWorldclim.r
-
-
-scontrol update jobid=58351990 TimeLimit=01:00:00
