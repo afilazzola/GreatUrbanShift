@@ -3,6 +3,8 @@
 ## Libraries
 library(tidyverse)
 library(ggridges)
+library(MASS)
+library(emmeans)
 
 
 ## Look at the model results
@@ -122,6 +124,52 @@ anova(m2)
 
 longCity %>% filter(City == "Toronto")
 
+### Test against climate patterns
+climate <- read.csv("data//currentClimate.csv")
+meanClimate <- climate %>% 
+  group_by(City) %>% 
+  summarize(map = mean(MAP, na.rm = T),
+    mat = mean(MAT, na.rm = T)) %>% 
+    right_join(longCity) 
+
+## Precipitation
+m1Gain <- lm(value ~ map * SSP, data= meanClimate %>% filter(change == "gains"))
+anova(m1Gain, test="Chisq")
+m1Gains <- effects::effect("map", m1Gain,
+ xlevels = list(map = seq(100, 1600, by = 100)), 
+ se = T) %>% data.frame()
+m1Loss <- lm(value ~ map * SSP, data= meanClimate %>% filter(change == "losses"))
+anova(m1Loss, test="Chisq")
+m1Losses <- effects::effect("map", m1Loss,
+ xlevels = list(map = seq(100, 1600, by = 100)), 
+ se = T) %>% data.frame()
+
+ggplot(meanClimate, aes(x = map, y = value, fill=changeSPP)) +
+geom_point(shape = 21, size = 3) + theme_classic() + geom_hline(yintercept = 0, lty = 2 )  + ylab("Change in species richness") +
+ scale_fill_manual(values =  colours)  +
+ xlab("Mean annual precipitation") + theme(text = element_text(size=16), legend.position = c(0.9, 0.85)) +
+ geom_line(data = m1Gains, aes(x = map, y= fit, fill = NA), color = colours[3]) +
+ geom_line(data = m1Losses, aes(x = map, y= fit , fill = NA), color = colours[6]) 
+
+## Temperature
+m2Gain <- lm(value ~ mat * SSP, data= meanClimate %>% filter(change == "gains"))
+anova(m2Gain, test="Chisq")
+m2Gains <- effects::effect("mat", m2Gain,
+ xlevels = list(map = seq(3, 25, by = 1)), 
+ se = T) %>% data.frame()
+m2Loss <- lm(value ~ mat * SSP, data= meanClimate %>% filter(change == "losses"))
+anova(m2Loss, test="Chisq")
+m2Losses <- effects::effect("mat", m2Loss,
+ xlevels = list(mat = seq(3, 25, by = 1)), 
+ se = T) %>% data.frame()
+
+ggplot(meanClimate, aes(x = mat, y = value, fill=changeSPP)) +
+geom_point(shape = 21, size = 3) + theme_classic() + geom_hline(yintercept = 0, lty = 2 )  + ylab("Change in species richness") +
+ scale_fill_manual(values =  colours)  +
+ xlab("Mean annual temperature") + theme(text = element_text(size=16), legend.position = c(0.9, 0.85)) +
+ geom_line(data = m2Gains, aes(x = mat, y= fit, fill = NA), color = colours[3]) +
+ geom_line(data = m2Losses, aes(x = mat, y= fit , fill = NA), color = colours[6]) 
+
 ##### Taxa plot
 ## Differences in taxa
 taxaInfo <- terrestrial %>% distinct(Phylum, Class, Order, Family, species)
@@ -141,7 +189,7 @@ mutate(medianOrder = median(netCities, na.rm=T), nOrder=length(netCities)) %>%
 ## Simple phylum plot
 taxaPlot <- ggplot(taxaClimateSimplified %>%  filter(Class != "Clitellata"),
       aes(y=Class, x= netCities, fill=Class)) + 
-  geom_density_ridges2(scale = 0.8, rel_min_height = 0.05) +
+  geom_density_ridges2(scale = 0.8, rel_min_height = 0.03) +
   theme_classic() + xlab("Net change in number of cities") +
   geom_hline(yintercept=0, lty=2) + xlim(c(-30, 30)) +
   scale_fill_manual(values=c(RColorBrewer::brewer.pal(n=12, "Paired"), "black")) +
@@ -166,7 +214,7 @@ futureSpecies <- taxaClimate %>%
 extremeFamilies <- taxaClimateSimplified %>% 
   filter(Class %in% c("Reptilia","Mammalia","Amphibia", "Gastropoda")) %>% 
   group_by(Class, Family) %>% 
-  summarize(taxaChange = mean(netCities), nSpp = length(unique(species)), currentCity = mean(currentCities))  %>% 
+  summarize(taxaChange = mean(netCities), nSpp = length(unique(species)), currentCity = mean(currentCities), futureCity = mean(futureCities))  %>% 
   filter(nSpp > 1) %>% 
   slice(which(taxaChange == max(taxaChange) | taxaChange == min(taxaChange) |  nSpp == max(nSpp))) %>% 
   mutate(propCityChange = taxaChange / currentCity)
@@ -249,8 +297,7 @@ IUCNplot
 ggsave("Figure3.pdf", IUCNplot, width = 10, height = 7)
 
 ### Models to test for differences
-library(MASS)
-library(emmeans)
+
 
 ## At-risk
 m1 <- glm.nb(value ~ change * SSP, 
@@ -266,6 +313,7 @@ summary(m2)
 anova(m2)
 pairwise2 <- emmeans(m2,  "change")
 pairs(pairwise2)
+
 
 
 
@@ -319,7 +367,8 @@ RelativeChangePlot <- ggplot(comparisonToCurrent , aes(x = currentSpp, y = value
  scale_fill_manual(values =  colours)  +
  xlab("Historic species richness") + theme(text = element_text(size=16), legend.position = c(0.9, 0.85)) +
  geom_line(data = predGains, aes(x = currentSpp, y= fit, fill = NA), color = colours[3]) +
- geom_line(data = predLosses, aes(x = currentSpp, y= fit , fill = NA), color = colours[6])
+ geom_line(data = predLosses, aes(x = currentSpp, y= fit , fill = NA), color = colours[6]) +
+ scale_x_continuous(breaks = seq(250,1500, 250) )
 RelativeChangePlot
 ggsave("Figure5.pdf", RelativeChangePlot, width = 9, height = 7)
 
