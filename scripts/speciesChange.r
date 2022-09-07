@@ -49,6 +49,9 @@ min(terrestrial$nobs)
 max(terrestrial$nobs)
 length(unique(terrestrial$species))
 
+speciesList <- terrestrial[!duplicated(terrestrial$species),]
+write.csv(speciesList, "speciesListSuppelemental.csv.", row.names=FALSE)
+
 ## Look at predictions for cities
 allClimates <- list.files("out//cityPredict//", full.names = T, pattern="futureClimate")
 
@@ -76,6 +79,7 @@ allClimate <- allCurrent %>%
     left_join(allFuture) %>% 
     rename(futureProb = meanProb) %>% 
     filter(!is.na(SSP)) %>% 
+    filter(species %in% speciesList$species) %>% 
     filter(!(currentProb == 0  & futureProb == 0 )) %>% 
     mutate(currentOcc = ifelse(currentProb > 0 , 1 , 0), 
       futureOcc = ifelse(futureProb > 0 , 1 , 0),
@@ -90,6 +94,17 @@ cityStats <- read.csv("data//cityData//CityCharacteristics.csv") %>%
   dplyr::select(City = CityName, ecozone = NA_L1NAME, bio1:bio15, lon, lat)
 
 
+### General plot of study sites
+mp <- NULL
+mapWorld <- borders("world", colour="black", fill="gray90") # create a layer of borders
+mp <- ggplot() + theme_classic()+  mapWorld + xlim(-180,-30) + ylim(-20, 90)
+
+mp <- mp+ geom_point(data=cityStats , aes(x=lon, y=lat) , fill="Grey60",  size=3, pch=21) +
+ ylab("Latitude") + xlab("Longitude")
+pdf("map.pdf", useDingbats = F)
+mp
+dev.off() 
+
 cityChange <- allClimate %>%
     left_join(cityStats) %>% 
     group_by(City, lat, lon, SSP) %>% 
@@ -99,7 +114,7 @@ cityChange <- allClimate %>%
 
 longCity <- cityChange %>% 
   mutate(losses = losses* -1) %>% 
-  select(City, SSP, gains, losses) %>% 
+  dplyr::select(City, SSP, gains, losses) %>% 
   gather(change, value, gains:losses) %>% 
   mutate(changeSPP = toupper(paste0(change, " - ", SSP)))
 
@@ -133,42 +148,45 @@ meanClimate <- climate %>%
     right_join(longCity) 
 
 ## Precipitation
-m1Gain <- lm(value ~ map * SSP, data= meanClimate %>% filter(change == "gains"))
+m1Gain <- glm.nb(value ~ map * SSP, data= meanClimate %>% filter(change == "gains"))
 anova(m1Gain, test="Chisq")
 m1Gains <- effects::effect("map", m1Gain,
  xlevels = list(map = seq(100, 1600, by = 100)), 
  se = T) %>% data.frame()
-m1Loss <- lm(value ~ map * SSP, data= meanClimate %>% filter(change == "losses"))
+m1Loss <- glm.nb(abs(value) ~ map * SSP, data= meanClimate %>% filter(change == "losses"))
 anova(m1Loss, test="Chisq")
 m1Losses <- effects::effect("map", m1Loss,
  xlevels = list(map = seq(100, 1600, by = 100)), 
  se = T) %>% data.frame()
 
-ggplot(meanClimate, aes(x = map, y = value, fill=changeSPP)) +
+precPlot <- ggplot(meanClimate, aes(x = map, y = value, fill=changeSPP)) +
 geom_point(shape = 21, size = 3) + theme_classic() + geom_hline(yintercept = 0, lty = 2 )  + ylab("Change in species richness") +
  scale_fill_manual(values =  colours)  +
  xlab("Mean annual precipitation") + theme(text = element_text(size=16), legend.position = c(0.9, 0.85)) +
  geom_line(data = m1Gains, aes(x = map, y= fit, fill = NA), color = colours[3]) +
  geom_line(data = m1Losses, aes(x = map, y= fit , fill = NA), color = colours[6]) 
+ggsave("PrecipitationPlot.pdf", precPlot)
 
 ## Temperature
-m2Gain <- lm(value ~ mat * SSP, data= meanClimate %>% filter(change == "gains"))
+m2Gain <- glm.nb(value ~ mat * SSP, data= meanClimate %>% filter(change == "gains"))
 anova(m2Gain, test="Chisq")
 m2Gains <- effects::effect("mat", m2Gain,
  xlevels = list(map = seq(3, 25, by = 1)), 
  se = T) %>% data.frame()
-m2Loss <- lm(value ~ mat * SSP, data= meanClimate %>% filter(change == "losses"))
+m2Loss <- glm.nb(abs(value) ~ mat * SSP, data= meanClimate %>% filter(change == "losses"))
 anova(m2Loss, test="Chisq")
 m2Losses <- effects::effect("mat", m2Loss,
  xlevels = list(mat = seq(3, 25, by = 1)), 
  se = T) %>% data.frame()
 
-ggplot(meanClimate, aes(x = mat, y = value, fill=changeSPP)) +
+tempPlot <- ggplot(meanClimate, aes(x = mat, y = value, fill=changeSPP)) +
 geom_point(shape = 21, size = 3) + theme_classic() + geom_hline(yintercept = 0, lty = 2 )  + ylab("Change in species richness") +
  scale_fill_manual(values =  colours)  +
  xlab("Mean annual temperature") + theme(text = element_text(size=16), legend.position = c(0.9, 0.85)) +
  geom_line(data = m2Gains, aes(x = mat, y= fit, fill = NA), color = colours[3]) +
  geom_line(data = m2Losses, aes(x = mat, y= fit , fill = NA), color = colours[6]) 
+ggsave("TemperaturePlot.pdf", tempPlot)
+
 
 ##### Taxa plot
 ## Differences in taxa
