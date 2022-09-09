@@ -105,9 +105,13 @@ allClimate <- read.csv("testingInteractions.csv")
 ## find the number of co-occurring species in each city
 
 library(foreach)
+library(doParallel)
+library(tidyverse)
+registerDoParallel(cores = 6)
 
-foreach(i = unique(allClimate$City), .combine = rbind) %do% {
+allCityCooccur <- foreach(i = unique(allClimate$City), .combine = rbind, .packages=c("tidyverse")) %dopar% {
   currentSpeciesOverlap <- allClimate %>%
+    filter(currentOcc == 1) %>%
     dplyr::select(City, species, currentOcc, SSP) %>%
     filter(SSP == "ssp585") %>%
     filter(City == i)
@@ -121,3 +125,49 @@ foreach(i = unique(allClimate$City), .combine = rbind) %do% {
     mutate(City = i)
   coOccDFLong
 }
+
+registerDoParallel(cores = 6)
+futureCityCooccur <- foreach(i = unique(allClimate$City), .combine = rbind, .packages=c("tidyverse","foreach")) %do% {
+  foreach(j = unique(allClimate$SSP), .combine = rbind, .packages=c("tidyverse")) %dopar% { 
+  currentSpeciesOverlap <- allClimate %>%
+    filter(futureOcc == 1) %>%
+    dplyr::select(City, species, currentOcc, SSP) %>%
+    filter(SSP == j) %>%
+    filter(City == i)
+
+  coOcc <- crossprod(table(currentSpeciesOverlap[1:2]))
+  coOccDF <- data.frame(coOcc)
+
+  coOccDFLong <- coOccDF %>%
+    rownames_to_column("species") %>%
+    gather(speciesB, coOccCities, -species) %>%
+    mutate(City = i, SSP = j)
+  coOccDFLong
+}
+}
+
+futureCityCooccur %>% group_by(City, SSP) %>% summarize(length(unique(species)))
+
+futureCityCooccur <- futureCityCooccur %>% rename(futureCoOcc = coOccCities) 
+
+
+allInteractions <- foreach(i = unique(allClimate$SSP), .combine= rbind) %do% {
+
+futureCityCooccurSSP <- futureCityCooccur  %>% filter(SSP == i)
+
+allCoOccur <- allCityCooccur %>%
+  full_join(futureCityCooccurSSP)
+allCoOccur[,"coOccCities"] <- ifelse(is.na(allCoOccur$coOccCities), 0, 1)
+allCoOccur[,"futureCoOcc"] <- ifelse(is.na(allCoOccur$futureCoOcc), 0, 1)
+
+cityPatterns <- allCoOccur  %>% 
+  mutate(interaction = futureCoOcc - coOccCities) %>%
+  group_by(City) %>% 
+  summarize(newInteraction = sum(interaction == 1, na.rm = T)/length(unique(species)), 
+            lostInteraction = sum(interaction == -1, na.rm = T)/length(unique(species))) %>% 
+  mutate(SSP = i)
+  cityPatterns
+}
+
+
+write.csv(allInteractions, "data//AllSpeciesInteractions.csv", row.names = FALSE)
