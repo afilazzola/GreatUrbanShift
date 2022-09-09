@@ -171,3 +171,27 @@ cityPatterns <- allCoOccur  %>%
 
 
 write.csv(allInteractions, "data//AllSpeciesInteractions.csv", row.names = FALSE)
+
+
+library(tidyverse)
+
+allInteractions <- read.csv("data//AllSpeciesInteractions.csv") %>% 
+  mutate(City = gsub("Qu\xe9bec", "Quebec", City),
+  City = gsub("Montr\xe9al", "Montreal", City)) %>% 
+  mutate(lostInteraction = lostInteraction * -1) %>% 
+  gather(interaction, value, -City, -SSP) %>% 
+
+
+colours <- rev(c(RColorBrewer::brewer.pal(n=6, "RdYlBu")))
+colours[1:3] <- rev(colours[1:3])
+
+pdf("figures//AllSpeciesInteractions.pdf", width = 7, height = 8, useDingbats = F)
+
+ggplot(allInteractions, aes(x = City, y = value, fill = SSP)) +
+  geom_bar(stat = "identity", position = "dodge") + 
+  theme_classic() + coord_flip() +
+  facet_grid(~interaction, scales = "free") +
+  scale_fill_manual(values = colours) + xlab("")
+  dev.off()
+
+
