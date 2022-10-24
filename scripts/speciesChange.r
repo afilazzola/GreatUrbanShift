@@ -397,3 +397,32 @@ ExtendedData2 <- cityChange %>%
   ungroup() %>% 
   dplyr::select(SSP, City,  gains, losses, noChanges, HistoricSpecies = currentSpp)
 write.csv(ExtendedData2, "AppendixTable2.csv", row.names=F)
+
+
+
+
+#### Appendix Data for Toronto Star
+
+SimplifiedCity <- taxaClimate  %>% 
+  filter(SSP %in% c("ssp245", "ssp585")) %>%
+  dplyr::select(City, SSP, Phylum, Class, Order, Family,Species = species, currentOcc, futureOcc) %>% 
+  arrange(City) %>% 
+  mutate(NetChange = futureOcc - currentOcc) %>%
+  write.csv("appendix//AllSpeciesChange.csv", row.names = F)
+
+
+canadianSpecies <- c("Cardinalis cardinalis", "Poecile atricapillus","Cyanocitta cristata", "Icterus galbula",
+"Setophaga ruticilla", "Picoides pubescens", "Spinus tristis", "Progne subis", 
+"Gavia immer", "Ardea herodias","Sciurus carolinensis","Sciurus niger", "Tamias minimus","Tamias striatus",
+"Danaus plexippus","Papilio canadensis","Bombus impatiens","Bombus vagans","Bombus bimaculatus",
+"Chrysemys picta","Chelydra serpentina","Anaxyrus hemiophrys","Ambystoma macrodactylum",
+"Lithobates pipiens","Ambystoma maculatum", "Pseudacris maculata", "Lepus americanus")
+
+
+taxaClimate %>% 
+  filter(SSP %in% c("ssp245", "ssp585")) %>%
+  filter(species %in% canadianSpecies) %>% 
+  dplyr::select(City, SSP, Phylum, Class, Order, Family, Species = species, currentOcc, futureOcc) %>% 
+  arrange(City) %>% 
+  mutate(NetChange = futureOcc - currentOcc) %>%
+  write.csv("appendix//CanadianSpeciesChange.csv", row.names = F)
