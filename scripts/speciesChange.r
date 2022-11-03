@@ -426,3 +426,24 @@ taxaClimate %>%
   arrange(City) %>% 
   mutate(NetChange = futureOcc - currentOcc) %>%
   write.csv("appendix//CanadianSpeciesChange.csv", row.names = F)
+
+
+
+### Get common names for species list
+library(taxize)
+speciesList <- read.csv("appendix//AllSpeciesChange.csv", stringsAsFactors = F)
+
+latinNames <- unique(speciesList$Species)
+
+commonName <- sci2comm(sci= latinNames, simplify = T)
+commonName <- lapply(commonName, function(i) {
+  ifelse(length(nchar(i)) == 0, NA, i)
+})
+commonNames <- as.vector(unlist(commonName))
+
+allNames <- data.frame(Species = latinNames, commonNames)
+
+speciesAll <- merge(speciesList, allNames, by="Species")
+
+write.csv( allNames, "appendix//SpeciesList.csv", row.names = F)
+speciesList <- write.csv(speciesAll, "appendix//AllSpeciesChangeCommon.csv")
