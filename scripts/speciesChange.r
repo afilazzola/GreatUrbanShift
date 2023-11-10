@@ -447,3 +447,64 @@ speciesAll <- merge(speciesList, allNames, by="Species")
 
 write.csv( allNames, "appendix//SpeciesList.csv", row.names = F)
 speciesList <- write.csv(speciesAll, "appendix//AllSpeciesChangeCommon.csv")
+
+
+
+### Compare native vs non-native
+
+nativeStatus <- read.csv("data/nativeStatus.csv")
+
+head(nativeStatus)
+
+nativeStatusSelect <- nativeStatus %>% dplyr::select(species, NativeStatus)
+
+allClimateNative <- left_join(allClimate, nativeStatusSelect, by="species") %>% 
+  mutate(nativeStatus = ifelse(NativeStatus=="Exotic", "Exotic", "Native"))
+
+
+exoticClimate <- allClimateNative %>% 
+  group_by(SSP, nativeStatus, City) %>% 
+  summarize(totalGain = sum(gain), totalLoss = sum(loss), totalNoChange = sum(noChange)) %>% 
+  filter(nativeStatus == "Exotic") 
+
+## need the bars to not stack, but to be beside each other
+ggplot(aes(x = City, y = totalGain, fill = SSP), data = exoticClimate) + 
+  geom_bar(stat = "identity", position="dodge")  + facet_wrap(~SSP) + theme_classic() +
+  theme(text = element_text(size=16)) + ylab("Number of species") + xlab("")+ 
+  scale_fill_manual(values =  c("#56B4E9","#999999", "#E69F00"))  +
+  coord_flip()
+
+ggplot(aes(x = City, y = totalLoss, fill = SSP), data = exoticClimate) + 
+  geom_bar(stat = "identity", position="dodge")  + facet_wrap(~SSP) + theme_classic() +
+  theme(text = element_text(size=16)) + ylab("Number of species") + xlab("")+ 
+  scale_fill_manual(values =  c("#56B4E9","#999999", "#E69F00"))  +
+  coord_flip()
+
+
+exoticClimate %>% group_by(SSP) %>% summarize(meanGain = mean(totalGain), meanLoss = mean(totalLoss))
+
+cityChange <- exoticClimate %>%
+    left_join(cityStats) %>% 
+    group_by(City, lat, lon, SSP) %>% 
+    summarize(gains = sum(gain), losses = sum(loss),
+     noChanges = sum(noChange), currentSpp = sum(currentOcc)) %>% 
+    mutate(perChange = (gains - losses) / currentSpp)
+
+longCity <- exoticClimate %>% 
+  mutate(totalLoss = totalLoss* -1) %>% 
+  dplyr::select(City, SSP, totalGain, totalLoss) %>% 
+  gather(change, value, totalGain:totalLoss) %>% 
+  mutate(changeSPP = toupper(paste0(change, " - ", SSP)))
+
+
+### Patterns of differences among cities
+colours <- rev(c(RColorBrewer::brewer.pal(n=6, "RdYlBu")))
+colours[1:3] <- rev(colours[1:3])
+cityPlot <- ggplot(longCity, aes(x = reorder(City, value), y = value, fill = changeSPP)) + 
+geom_point(shape = 21, color = "black", size = 2) + 
+coord_flip()+ xlab("") +
+   scale_fill_manual(values = colours) +
+  geom_hline(yintercept=0, lty=2) + theme_classic() +
+  ylab("Change in number of species")+
+  theme(text = element_text(size=14), legend.position = c(0.86, 0.2))
+cityPlot
